@@ -39,6 +39,8 @@
             buildInputs = [
               deps.zig
               self.packages.${system}.zls
+              pkgs.clangStdenv
+              pkgs.cmake
             ];
           };
       });

@@ -1,3 +1,14 @@
 [submodule "mbedtls"]
 	path = zig-mbedtls/mbedtls
 	url = https://github.com/ARMmbed/mbedtls.git
+[submodule "submodules/googletest"]
+	path = msquic/submodules/googletest
+	url = https://github.com/google/googletest
+[submodule "submodules/openssl"]
+	path = msquic/submodules/openssl
+	url = https://github.com/quictls/openssl.git
+	branch = OpenSSL_1_1_1n+quic
+[submodule "submodules/clog"]
+	path = msquic/submodules/clog
+	url = https://github.com/microsoft/CLOG.git
+

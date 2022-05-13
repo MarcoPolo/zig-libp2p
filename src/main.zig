@@ -11,6 +11,10 @@ const mbedtls = @cImport({
 
     @cInclude("mbedtls/platform.h");
 });
+
+const msquic = @cImport({
+    @cInclude("msquic.h");
+});
 const testing = std.testing;
 
 // What needs to be built
@@ -36,4 +40,9 @@ test "basic mbedtls test" {
     _ = foo;
 
     try testing.expect(true);
+}
+
+test "basic msquic test" {
+    const api_table: *msquic.MsQuic = undefined;
+    _ = api_table;
 }
