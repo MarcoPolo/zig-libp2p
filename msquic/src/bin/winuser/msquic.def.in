@@ -1,0 +1,5 @@
+LIBRARY @QUIC_LIBRARY_NAME@
+
+EXPORTS
+    MsQuicOpenVersion
+    MsQuicClose

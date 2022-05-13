@@ -1,0 +1,11 @@
+LIBRARY msquic_fuzz
+
+EXPORTS
+    MsQuicOpenVersion
+    MsQuicClose
+    MsQuicFuzzInit
+    MsQuicFuzzSimulateReceive
+    MsQuicFuzzRegisterSendCallback
+    MsQuicFuzzRegisterRecvCallback
+    MsQuicFuzzRegisterInjectCallback
+    MsQuicFuzzRegisterEncryptCallback

@@ -1,0 +1,2 @@
+_MsQuicOpenVersion
+_MsQuicClose
