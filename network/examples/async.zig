@@ -14,7 +14,7 @@ pub fn main() !void {
 
     try server.bind(.{
         .address = .{ .ipv4 = network.Address.IPv4.any },
-        .port = 2501,
+        .port = 2502,
     });
 
     try server.listen();
@@ -38,11 +38,14 @@ const Client = struct {
 
         while (true) {
             var buf: [100]u8 = undefined;
+            std.debug.print("Waiting to read", .{});
             const amt = try self.conn.receive(&buf);
-            if (amt == 0)
+            if (amt == 0) {
+                std.debug.print("Nothing to read?", .{});
                 break; // We're done, end of connection
+            }
             const msg = buf[0..amt];
-            std.debug.print("Client wrote: {s}", .{msg});
+            std.debug.print("Client wrote: {s}\n", .{msg});
         }
     }
 };

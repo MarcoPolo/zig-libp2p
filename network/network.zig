@@ -341,7 +341,7 @@ pub const Socket = struct {
         if (is_bsd) {
             // set the options to ON
             const value: u32 = 1;
-            const SO_NOSIGPIPE = 0x00000800;
+            const SO_NOSIGPIPE = std.os.SO.NOSIGPIPE;
             try std.os.setsockopt(self.internal, std.os.SOL.SOCKET, SO_NOSIGPIPE, std.mem.asBytes(&value));
         }
 
@@ -370,10 +370,29 @@ pub const Socket = struct {
         var addr: std.os.sockaddr.in6 = undefined;
         var addr_size: std.os.socklen_t = @sizeOf(std.os.sockaddr.in6);
 
-        const flags = if (is_windows) 0 else if (std.io.is_async) std.os.O.NONBLOCK else 0;
+        const root = @import("root");
+        const system = if (@hasDecl(root, "os") and root.os != @This())
+            root.os.system
+        else if (builtin.link_libc or is_windows)
+            std.c
+        else switch (builtin.os.tag) {
+            else => struct {},
+        };
+        std.debug.print("Flag is {}\n", .{system.SOCK.NONBLOCK});
+
+        // const flags = if (is_windows) 0 else if (std.io.is_async) std.os.O.NONBLOCK else 0;
+        const flags = if (is_windows) 0 else if (std.io.is_async) system.SOCK.NONBLOCK else 0;
+        std.debug.print("Flag is {}\n", .{flags});
 
         var addr_ptr = @ptrCast(*std.os.sockaddr, &addr);
-        const fd = try accept4_fn(self.internal, addr_ptr, &addr_size, flags);
+        const fd = blk: {
+            if (std.io.is_async) {
+                const loop = std.event.Loop.instance orelse return error.UnexpectedError;
+                break :blk try loop.accept(self.internal, addr_ptr, &addr_size, flags);
+            } else {
+                break :blk try accept4_fn(self.internal, addr_ptr, &addr_size, flags);
+            }
+        };
         errdefer close_fn(fd);
 
         return Socket{

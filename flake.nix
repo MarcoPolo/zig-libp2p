@@ -39,9 +39,12 @@
             buildInputs = [
               deps.zig
               self.packages.${system}.zls
-              pkgs.clangStdenv
-              pkgs.cmake
-            ];
+              # pkgs.clangStdenv
+              # pkgs.cmake
+            ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
+              # Security
+              # Kernel
+            ]);
           };
       });
 }
