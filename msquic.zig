@@ -26,7 +26,6 @@ pub fn create(b: *Builder, target: std.zig.CrossTarget, mode: std.builtin.Mode) 
     ret.setBuildMode(mode);
     ret.addIncludeDir(include_dir);
     ret.addIncludeDir(core_include_dir);
-    ret.defi
 
     // ret.addCSourceFiles(srcs, &.{"-Os"});
     ret.addCSourceFiles(srcs, &.{});

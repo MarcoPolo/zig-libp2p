@@ -1,11 +1,23 @@
 const std = @import("std");
 
+pub const log_level: std.log.Level = .debug;
+
+const allocator = blk: {
+    const Allocator = std.heap.GeneralPurposeAllocator(.{});
+    var _allocator = Allocator{};
+    break :blk _allocator.allocator();
+};
+
 // const mbedtls = @import("zig-mbedtls/mbedtls.zig");
 // const msquic = @import("msquic.zig");
 const pkgs = struct {
     const network = std.build.Pkg{
         .name = "network",
         .path = .{ .path = "network/network.zig" },
+    };
+    const uri = std.build.Pkg{
+        .name = "uri",
+        .path = .{ .path = "zig-uri/uri.zig" },
     };
 };
 
@@ -34,10 +46,44 @@ fn build_msquic(b: *std.build.Builder) anyerror!void {
 }
 
 fn linkQuiche(l: anytype) void {
+    // TODO get this from somewhere else
     l.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
     l.addIncludeDir("/Users/marco/code/quiche/quiche/include");
     l.addLibPath("/Users/marco/code/quiche/target/release");
     l.linkSystemLibraryName("quiche");
+    l.linkLibC();
+}
+
+fn includeLibSystemFromNix(l: anytype) anyerror!void {
+    var vars = try std.process.getEnvMap(allocator);
+    l.addIncludeDir(vars.get("LIBSYSTEM_INCLUDE").?);
+}
+
+fn linkMsquic(l: *std.build.LibExeObjStep) anyerror!void {
+    var vars = try std.process.getEnvMap(allocator);
+
+    try includeLibSystemFromNix(l);
+    l.addIncludeDir("/Users/marco/code/zig-libp2p/msquic/src/inc/");
+    l.addLibPath("/Users/marco/code/zig-libp2p/msquic/artifacts/bin/macos/arm64_Debug_openssl");
+    l.addLibPath("/nix/store/dj7wifb93h9yjkg46kpsxqhl2wjsyrsf-openssl-1.1.1n/lib");
+    l.linkSystemLibraryName("ssl");
+    l.linkSystemLibraryName("crypto");
+    l.linkSystemLibraryName("msquic");
+
+    // Pull framework paths from Nix CFLAGS env
+    var frameworks_in_nix_cflags = std.mem.split(u8, vars.get("NIX_CFLAGS_COMPILE").?, " ");
+    var next_is_framework = false;
+    while (frameworks_in_nix_cflags.next()) |val| {
+        if (next_is_framework) {
+            std.debug.print("nix framework paths: {s}\n", .{val});
+            l.addFrameworkDir(val);
+        }
+        next_is_framework = std.mem.eql(u8, val, "-iframework");
+    }
+
+    l.linkFramework("Security");
+    l.linkFramework("Foundation");
+    l.linkFramework("CoreFoundation");
     l.linkLibC();
 }
 
@@ -54,6 +100,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     // const mbedtls_lib = mbedtls.create(b, target, mode);
     // try build_msquic(b);
+
     // const msquic_lib = msquic.create(b, target, mode);
 
     const udp_example = b.addExecutable("udpExample", "examples/udp.zig");
@@ -64,8 +111,26 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const quiche_example = b.addExecutable("quicheExample", "examples/quiche.zig");
     quiche_example.setBuildMode(mode);
     linkQuiche(quiche_example);
+    quiche_example.addPackage(pkgs.uri);
     const quiche_example_step = b.step("quicheExample", "Run quiche example");
     quiche_example_step.dependOn(&b.addInstallArtifact(quiche_example).step);
+
+    const msquic_example = b.addExecutable("msquicExample", "examples/msquic.zig");
+    msquic_example.setBuildMode(mode);
+    try linkMsquic(msquic_example);
+    msquic_example.addPackage(pkgs.uri);
+    const msquic_example_step = b.step("msquicExample", "Run msquic example");
+    msquic_example_step.dependOn(&b.addInstallArtifact(msquic_example).step);
+
+    const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
+    msquic_zig.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
+    try includeLibSystemFromNix(msquic_zig);
+    msquic_zig.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
+    msquic_zig.addIncludeDir("/Users/marco/code/zig-libp2p/msquic/src/inc/");
+    const msquic_zig_step = b.step("msquicZig", "Build Zig wrapper around msquic api");
+    const f: std.build.FileSource = .{ .generated = &msquic_zig.output_file };
+    msquic_zig_step.dependOn(&msquic_zig.step);
+    msquic_zig_step.dependOn(&b.addInstallFile(f, "msquic_wrapper.zig").step);
 
     const lib = b.addStaticLibrary("zig-libp2p", "src/main.zig");
     // lib.linkLibC();
