@@ -1793,7 +1793,7 @@ const union_unnamed_4 = extern union {
 pub const struct_QUIC_CREDENTIAL_CONFIG = extern struct {
     Type: QUIC_CREDENTIAL_TYPE,
     Flags: QUIC_CREDENTIAL_FLAGS,
-    unnamed_0: union_unnamed_4,
+    CertPtr: union_unnamed_4,
     Principal: [*c]const u8,
     Reserved: ?*anyopaque,
     AsyncHandler: QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER,
@@ -1919,12 +1919,85 @@ pub const struct_QUIC_GLOBAL_SETTINGS = extern struct {
 };
 pub const QUIC_GLOBAL_SETTINGS = struct_QUIC_GLOBAL_SETTINGS; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:551:22: warning: struct demoted to opaque type - has bitfield
 const struct_unnamed_8 = opaque {};
+// Unused, opaque version of QuicSettings
 const union_unnamed_7 = extern union {
     IsSetFlags: u64,
     IsSet: struct_unnamed_8,
 }; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:610:13: warning: struct demoted to opaque type - has bitfield
-pub const struct_QUIC_SETTINGS = opaque {};
-pub const QUIC_SETTINGS = struct_QUIC_SETTINGS; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:630:17: warning: struct demoted to opaque type - has bitfield
+pub const QUIC_SETTINGS = QuicSettings;
+pub const QuicSettings = packed struct {
+    pub fn toQUIC_SETTINGS(self: *@This()) ?*const QUIC_SETTINGS {
+        return @ptrCast(?*const QUIC_SETTINGS, self);
+    }
+
+    IsSet: packed struct {
+        MaxBytesPerKey: bool,
+        HandshakeIdleTimeoutMs: bool,
+        IdleTimeoutMs: bool,
+        MtuDiscoverySearchCompleteTimeoutUs: bool,
+        TlsClientMaxSendBuffer: bool,
+        TlsServerMaxSendBuffer: bool,
+        StreamRecvWindowDefault: bool,
+        StreamRecvBufferDefault: bool,
+        ConnFlowControlWindow: bool,
+        MaxWorkerQueueDelayUs: bool,
+        MaxStatelessOperations: bool,
+        InitialWindowPackets: bool,
+        SendIdleTimeoutMs: bool,
+        InitialRttMs: bool,
+        MaxAckDelayMs: bool,
+        DisconnectTimeoutMs: bool,
+        KeepAliveIntervalMs: bool,
+        CongestionControlAlgorithm: bool,
+        PeerBidiStreamCount: bool,
+        PeerUnidiStreamCount: bool,
+        MaxBindingStatelessOperations: bool,
+        StatelessOperationExpirationMs: bool,
+        MinimumMtu: bool,
+        MaximumMtu: bool,
+        SendBufferingEnabled: bool,
+        PacingEnabled: bool,
+        MigrationEnabled: bool,
+        DatagramReceiveEnabled: bool,
+        ServerResumptionLevel: bool,
+        MaxOperationsPerDrain: bool,
+        MtuDiscoveryMissingProbeCount: bool,
+        RESERVED: u33,
+    },
+
+    MaxBytesPerKey: u64,
+    HandshakeIdleTimeoutMs: u64,
+    IdleTimeoutMs: u64,
+    MtuDiscoverySearchCompleteTimeoutUs: u64,
+    TlsClientMaxSendBuffer: u32,
+    TlsServerMaxSendBuffer: u32,
+    StreamRecvWindowDefault: u32,
+    StreamRecvBufferDefault: u32,
+    ConnFlowControlWindow: u32,
+    MaxWorkerQueueDelayUs: u32,
+    MaxStatelessOperations: u32,
+    InitialWindowPackets: u32,
+    SendIdleTimeoutMs: u32,
+    InitialRttMs: u32,
+    MaxAckDelayMs: u32,
+    DisconnectTimeoutMs: u32,
+    KeepAliveIntervalMs: u32,
+    CongestionControlAlgorithm: u16, // QUIC_CONGESTION_CONTROL_ALGORITHM
+    PeerBidiStreamCount: u16,
+    PeerUnidiStreamCount: u16,
+    MaxBindingStatelessOperations: u16,
+    StatelessOperationExpirationMs: u16,
+    MinimumMtu: u16,
+    MaximumMtu: u16,
+    SendBufferingEnabled: bool,
+    PacingEnabled: bool,
+    MigrationEnabled: bool,
+    DatagramReceiveEnabled: bool,
+    ServerResumptionLevel: u2, // QUIC_SERVER_RESUMPTION_LEVEL
+    RESERVED: u2,
+    MaxOperationsPerDrain: u8,
+    MtuDiscoveryMissingProbeCount: u8,
+};
 const struct_unnamed_9 = opaque {};
 pub const struct_QUIC_TLS_SECRETS = extern struct {
     SecretLength: u8,
@@ -1939,7 +2012,7 @@ pub const struct_QUIC_TLS_SECRETS = extern struct {
 pub const QUIC_TLS_SECRETS = struct_QUIC_TLS_SECRETS;
 pub const QUIC_SET_CONTEXT_FN = ?fn (HQUIC, ?*anyopaque) callconv(.C) void;
 pub const QUIC_GET_CONTEXT_FN = ?fn (HQUIC) callconv(.C) ?*anyopaque;
-pub const QUIC_SET_CALLBACK_HANDLER_FN = ?fn (HQUIC, ?*anyopaque, ?*anyopaque) callconv(.C) void;
+pub const QUIC_SET_CALLBACK_HANDLER_FN = ?fn (HQUIC, ?*const anyopaque, ?*anyopaque) callconv(.C) void;
 pub const QUIC_SET_PARAM_FN = ?fn (HQUIC, u32, u32, ?*const anyopaque) callconv(.C) c_uint;
 pub const QUIC_GET_PARAM_FN = ?fn (HQUIC, u32, [*c]u32, ?*anyopaque) callconv(.C) c_uint;
 pub const QUIC_REGISTRATION_OPEN_FN = ?fn ([*c]const QUIC_REGISTRATION_CONFIG, [*c]HQUIC) callconv(.C) c_uint;
@@ -5932,29 +6005,29 @@ pub const ENOKEY = @as(c_int, 126);
 pub const ERROR_BASE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 200000000, .decimal);
 pub const TLS_ERROR_BASE = @as(c_int, 256) + ERROR_BASE;
 pub const CERT_ERROR_BASE = @as(c_int, 512) + ERROR_BASE;
-pub const QUIC_STATUS_PENDING = QUIC_STATUS - @as(c_int, 2);
-pub const QUIC_STATUS_CONTINUE = QUIC_STATUS - @as(c_int, 1);
-pub const QUIC_STATUS_OUT_OF_MEMORY = QUIC_STATUS ++ ENOMEM;
-pub const QUIC_STATUS_INVALID_PARAMETER = QUIC_STATUS ++ EINVAL;
-pub const QUIC_STATUS_INVALID_STATE = QUIC_STATUS ++ EPERM;
-pub const QUIC_STATUS_NOT_SUPPORTED = QUIC_STATUS ++ EOPNOTSUPP;
-pub const QUIC_STATUS_NOT_FOUND = QUIC_STATUS ++ ENOENT;
-pub const QUIC_STATUS_BUFFER_TOO_SMALL = QUIC_STATUS ++ EOVERFLOW;
-pub const QUIC_STATUS_HANDSHAKE_FAILURE = QUIC_STATUS ++ ECONNABORTED;
-pub const QUIC_STATUS_ABORTED = QUIC_STATUS ++ ECANCELED;
-pub const QUIC_STATUS_ADDRESS_IN_USE = QUIC_STATUS ++ EADDRINUSE;
-pub const QUIC_STATUS_INVALID_ADDRESS = QUIC_STATUS ++ EAFNOSUPPORT;
-pub const QUIC_STATUS_CONNECTION_TIMEOUT = QUIC_STATUS ++ ETIMEDOUT;
-pub const QUIC_STATUS_CONNECTION_IDLE = QUIC_STATUS ++ ETIME;
-pub const QUIC_STATUS_INTERNAL_ERROR = QUIC_STATUS ++ EIO;
-pub const QUIC_STATUS_CONNECTION_REFUSED = QUIC_STATUS ++ ECONNREFUSED;
-pub const QUIC_STATUS_PROTOCOL_ERROR = QUIC_STATUS ++ EPROTO;
-pub const QUIC_STATUS_VER_NEG_ERROR = QUIC_STATUS ++ EPROTONOSUPPORT;
-pub const QUIC_STATUS_UNREACHABLE = QUIC_STATUS ++ EHOSTUNREACH;
-pub const QUIC_STATUS_TLS_ERROR = QUIC_STATUS ++ ENOKEY;
-pub const QUIC_STATUS_USER_CANCELED = QUIC_STATUS ++ EOWNERDEAD;
-pub const QUIC_STATUS_ALPN_NEG_FAILURE = QUIC_STATUS ++ ENOPROTOOPT;
-pub const QUIC_STATUS_STREAM_LIMIT_REACHED = QUIC_STATUS ++ ESTRPIPE;
+pub const QUIC_STATUS_PENDING = @as(QUIC_STATUS, @as(c_int, 2));
+pub const QUIC_STATUS_CONTINUE = @as(QUIC_STATUS, @as(c_int, 1));
+pub const QUIC_STATUS_OUT_OF_MEMORY = @as(QUIC_STATUS, ENOMEM);
+pub const QUIC_STATUS_INVALID_PARAMETER = @as(QUIC_STATUS, EINVAL);
+pub const QUIC_STATUS_INVALID_STATE = @as(QUIC_STATUS, EPERM);
+pub const QUIC_STATUS_NOT_SUPPORTED = @as(QUIC_STATUS, EOPNOTSUPP);
+pub const QUIC_STATUS_NOT_FOUND = @as(QUIC_STATUS, ENOENT);
+pub const QUIC_STATUS_BUFFER_TOO_SMALL = @as(QUIC_STATUS, EOVERFLOW);
+pub const QUIC_STATUS_HANDSHAKE_FAILURE = @as(QUIC_STATUS, ECONNABORTED);
+pub const QUIC_STATUS_ABORTED = @as(QUIC_STATUS, ECANCELED);
+pub const QUIC_STATUS_ADDRESS_IN_USE = @as(QUIC_STATUS, EADDRINUSE);
+pub const QUIC_STATUS_INVALID_ADDRESS = @as(QUIC_STATUS, EAFNOSUPPORT);
+pub const QUIC_STATUS_CONNECTION_TIMEOUT = @as(QUIC_STATUS, ETIMEDOUT);
+pub const QUIC_STATUS_CONNECTION_IDLE = @as(QUIC_STATUS, ETIME);
+pub const QUIC_STATUS_INTERNAL_ERROR = @as(QUIC_STATUS, EIO);
+pub const QUIC_STATUS_CONNECTION_REFUSED = @as(QUIC_STATUS, ECONNREFUSED);
+pub const QUIC_STATUS_PROTOCOL_ERROR = @as(QUIC_STATUS, EPROTO);
+pub const QUIC_STATUS_VER_NEG_ERROR = @as(QUIC_STATUS, EPROTONOSUPPORT);
+pub const QUIC_STATUS_UNREACHABLE = @as(QUIC_STATUS, EHOSTUNREACH);
+pub const QUIC_STATUS_TLS_ERROR = @as(QUIC_STATUS, ENOKEY);
+pub const QUIC_STATUS_USER_CANCELED = @as(QUIC_STATUS, EOWNERDEAD);
+pub const QUIC_STATUS_ALPN_NEG_FAILURE = @as(QUIC_STATUS, ENOPROTOOPT);
+pub const QUIC_STATUS_STREAM_LIMIT_REACHED = @as(QUIC_STATUS, ESTRPIPE);
 pub inline fn QUIC_STATUS_TLS_ALERT(Alert: anytype) @TypeOf(QUIC_STATUS(@as(c_int, 0xff) & Alert) + TLS_ERROR_BASE) {
     return QUIC_STATUS(@as(c_int, 0xff) & Alert) + TLS_ERROR_BASE;
 }
@@ -6142,3 +6215,68 @@ pub const timespec = struct_timespec;
 pub const fssearchblock = struct_fssearchblock;
 pub const searchstate = struct_searchstate;
 pub const QUIC_HANDLE = struct_QUIC_HANDLE;
+
+const std = @import("std");
+const builtin = @import("builtin");
+fn codeAndCodeForMacOS(code: c_uint, code_for_macos: c_uint) c_uint {
+    if (builtin.os.tag == .macos) {
+        return code_for_macos;
+    }
+    return code;
+}
+
+pub const QuicStatus = struct {
+    pub const Success = 0;
+    pub const Pending = -2;
+    pub const Continue = -1;
+    pub const OutOfMemory = 12;
+    pub const InvalidParameter = 22;
+    pub const InvalidState = 1;
+    pub const NotSupported = codeAndCodeForMacOS(95, 102);
+    pub const NotFound = 2;
+    pub const BufferTooSmall = codeAndCodeForMacOS(75, 84);
+    pub const HandshakeFailure = codeAndCodeForMacOS(103, 53);
+    pub const Aborted = codeAndCodeForMacOS(125, 89);
+    pub const AddressInUse = codeAndCodeForMacOS(98, 48);
+    pub const InvalidAddress = codeAndCodeForMacOS(97, 47);
+    pub const ConnectionTimeout = codeAndCodeForMacOS(110, 60);
+    pub const ConnectionIdle = codeAndCodeForMacOS(62, 101);
+    pub const InternalError = 5;
+    pub const ConnectionRefused = codeAndCodeForMacOS(111, 61);
+    pub const ProtocolError = codeAndCodeForMacOS(71, 100);
+    pub const VerNegError = codeAndCodeForMacOS(93, 43);
+    pub const Unreachable = codeAndCodeForMacOS(113, 65);
+    pub const TlsError = 126;
+    pub const UserCanceled = codeAndCodeForMacOS(130, 105);
+    pub const AlpnNegFailure = codeAndCodeForMacOS(92, 42);
+    pub const StreamLimitReached = 86;
+
+    fn tlsAlert(alert: c_uint) c_uint {
+        return (0xff & alert) + TLS_ERROR_BASE;
+    } //       ((QUIC_STATUS)(0xff & Alert) + TLS_ERROR_BASE)
+
+    const CloseNotify = tlsAlert(0); // 0xBEBC300 - Close notify
+    const BadCertificate = tlsAlert(42); // 0xBEBC32A - Bad Certificate
+    const UnsupportedCertificate = tlsAlert(43); // 0xBEBC32B - Unsupported Certficiate
+    const RevokedCertificate = tlsAlert(44); // 0xBEBC32C - Revoked Certificate
+    const ExpiredCertificate = tlsAlert(45); // 0xBEBC32D - Expired Certificate
+    const UnknownCertificate = tlsAlert(46); // 0xBEBC32E - Unknown Certificate
+    const RequiredCertificate = tlsAlert(116); // 0xBEBC374 - Required Certificate
+
+    fn certError(v: c_uint) c_uint {
+        return v + CERT_ERROR_BASE;
+    } // #define QUIC_STATUS_CERT_ERROR(Val)         ((QUIC_STATUS)Val + CERT_ERROR_BASE)
+
+    const Expired = certError(1); // 0xBEBC401
+    const UntrustedRoot = certError(2); // 0xBEBC402
+
+    // foo: c_uint,
+
+    pub inline fn isError(status: c_uint) bool {
+        const s = @bitCast(c_int, status);
+        if (s > 0) {
+            return true;
+        }
+        return false;
+    }
+};

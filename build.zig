@@ -62,9 +62,11 @@ fn includeLibSystemFromNix(l: anytype) anyerror!void {
 fn linkMsquic(l: *std.build.LibExeObjStep) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
 
-    try includeLibSystemFromNix(l);
-    l.addIncludeDir("/Users/marco/code/zig-libp2p/msquic/src/inc/");
-    l.addLibPath("/Users/marco/code/zig-libp2p/msquic/artifacts/bin/macos/arm64_Debug_openssl");
+    l.addIncludeDir("./msquic/src/inc/");
+    // TODO Use nix to build this and set an env
+    // TODO 2 What about using Zig to build this?
+    l.addLibPath("./msquic/artifacts/bin/macos/arm64_Debug_openssl");
+    // TODO read this from NIX
     l.addLibPath("/nix/store/dj7wifb93h9yjkg46kpsxqhl2wjsyrsf-openssl-1.1.1n/lib");
     l.linkSystemLibraryName("ssl");
     l.linkSystemLibraryName("crypto");
@@ -84,7 +86,7 @@ fn linkMsquic(l: *std.build.LibExeObjStep) anyerror!void {
     l.linkFramework("Security");
     l.linkFramework("Foundation");
     l.linkFramework("CoreFoundation");
-    l.linkLibC();
+    // l.linkLibC();
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
@@ -123,14 +125,20 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     msquic_example_step.dependOn(&b.addInstallArtifact(msquic_example).step);
 
     const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
-    msquic_zig.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
     try includeLibSystemFromNix(msquic_zig);
-    msquic_zig.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
-    msquic_zig.addIncludeDir("/Users/marco/code/zig-libp2p/msquic/src/inc/");
+    msquic_zig.addIncludeDir("./msquic/src/inc/");
     const msquic_zig_step = b.step("msquicZig", "Build Zig wrapper around msquic api");
     const f: std.build.FileSource = .{ .generated = &msquic_zig.output_file };
     msquic_zig_step.dependOn(&msquic_zig.step);
     msquic_zig_step.dependOn(&b.addInstallFile(f, "msquic_wrapper.zig").step);
+
+    const msquic_sample = b.addTranslateC(.{ .path = "./msquic/src/tools/sample/sample.c" });
+    try includeLibSystemFromNix(msquic_sample);
+    msquic_sample.addIncludeDir("./msquic/src/inc/");
+    const msquic_sample_step = b.step("msquicSample", "Build Zig sample of msquic ");
+    const f2: std.build.FileSource = .{ .generated = &msquic_sample.output_file };
+    msquic_sample_step.dependOn(&msquic_sample.step);
+    msquic_sample_step.dependOn(&b.addInstallFile(f2, "msquic_sample.zig").step);
 
     const lib = b.addStaticLibrary("zig-libp2p", "src/main.zig");
     // lib.linkLibC();
