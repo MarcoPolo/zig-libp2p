@@ -9,3 +9,6 @@
 	path = msquic/submodules/clog
 	url = https://github.com/microsoft/CLOG.git
 
+[submodule "msquic"]
+	path = msquic
+	url = git@github.com:microsoft/msquic.git
