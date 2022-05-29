@@ -498,7 +498,10 @@ fn runServer(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, registration:
     MsQuic.QuicAddrSetFamily(&addr, MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC);
     MsQuic.QuicAddrSetPort(&addr, udp_port);
 
-    if (MsQuic.QuicStatus.isError(msquic.ListenerStart.?(listener, &alpn, 1, &addr))) {
+    const status = msquic.ListenerStart.?(listener, &alpn, 1, &addr);
+    if (MsQuic.QuicStatus.isError(status)) {
+        std.debug.print("Listener failed: {}\n", .{status});
+
         return error.ListenerStartFailed;
     }
 

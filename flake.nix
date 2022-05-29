@@ -12,7 +12,7 @@
         deps = (import ./dependencies.nix { inherit system; });
       in
       {
-        packages.hello = pkgs.hello;
+        packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { };
         packages.zls = pkgs.stdenvNoCC.mkDerivation {
           name = "zls";
           version = "master";
@@ -33,7 +33,7 @@
           '';
           XDG_CACHE_HOME = ".cache";
         };
-        defaultPackage = self.packages.${system}.hello;
+
         devShell =
           pkgs.mkShell
             rec {
@@ -41,9 +41,7 @@
                 deps.zig
                 self.packages.${system}.zls
                 pkgs.openssl
-                pkgs.pkg-config
-                # pkgs.clangStdenv
-                # pkgs.cmake
+                # pkgs.pkg-config
               ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
                 Security
                 Foundation
@@ -51,6 +49,8 @@
               # PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
               LIBSYSTEM_INCLUDE = "${pkgs.darwin.Libsystem.outPath}/include";
+              LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
+              LIB_OPENSSL = "${pkgs.openssl.dev}";
             };
 
       });

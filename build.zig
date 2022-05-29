@@ -1,12 +1,9 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const Allocator = std.mem.Allocator;
+// const build_msquic = @import("./build_msquic.zig").build_msquic;
 
-pub const log_level: std.log.Level = .debug;
-
-const allocator = blk: {
-    const Allocator = std.heap.GeneralPurposeAllocator(.{});
-    var _allocator = Allocator{};
-    break :blk _allocator.allocator();
-};
+// pub const log_level: std.log.Level = .debug;
 
 // const mbedtls = @import("zig-mbedtls/mbedtls.zig");
 // const msquic = @import("msquic.zig");
@@ -21,29 +18,29 @@ const pkgs = struct {
     };
 };
 
-fn build_msquic(b: *std.build.Builder) anyerror!void {
-    const DOtherSide_dir = b.addSystemCommand(&[_][]const u8{
-        "mkdir",
-        "-p",
-        "msquic/build",
-    });
-    try DOtherSide_dir.step.make();
-    const DOtherSide_prebuild = b.addSystemCommand(&[_][]const u8{
-        "cmake",
-        "-G",
-        "Unix Makefiles",
-        "..",
-    });
-    DOtherSide_prebuild.cwd = "msquic/build";
-    try DOtherSide_prebuild.step.make();
-    const DOtherSide_build = b.addSystemCommand(&[_][]const u8{
-        "cmake",
-        "--build",
-        ".",
-    });
-    DOtherSide_build.cwd = "msquic/build";
-    try DOtherSide_build.step.make();
-}
+// fn build_msquic(b: *std.build.Builder) anyerror!void {
+//     const DOtherSide_dir = b.addSystemCommand(&[_][]const u8{
+//         "mkdir",
+//         "-p",
+//         "msquic/build",
+//     });
+//     try DOtherSide_dir.step.make();
+//     const DOtherSide_prebuild = b.addSystemCommand(&[_][]const u8{
+//         "cmake",
+//         "-G",
+//         "Unix Makefiles",
+//         "..",
+//     });
+//     DOtherSide_prebuild.cwd = "msquic/build";
+//     try DOtherSide_prebuild.step.make();
+//     const DOtherSide_build = b.addSystemCommand(&[_][]const u8{
+//         "cmake",
+//         "--build",
+//         ".",
+//     });
+//     DOtherSide_build.cwd = "msquic/build";
+//     try DOtherSide_build.step.make();
+// }
 
 fn linkQuiche(l: anytype) void {
     // TODO get this from somewhere else
@@ -54,20 +51,53 @@ fn linkQuiche(l: anytype) void {
     l.linkLibC();
 }
 
-fn includeLibSystemFromNix(l: anytype) anyerror!void {
+fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
     l.addIncludeDir(vars.get("LIBSYSTEM_INCLUDE").?);
 }
 
-fn linkMsquic(l: *std.build.LibExeObjStep) anyerror!void {
+fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
+    // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
+    const msquic_dir = vars.get("LIB_MSQUIC").?;
 
-    l.addIncludeDir("./msquic/src/inc/");
-    // TODO Use nix to build this and set an env
-    // TODO 2 What about using Zig to build this?
-    l.addLibPath("./msquic/artifacts/bin/macos/arm64_Debug_openssl");
+    l.addLibPath(try std.fs.path.join(allocator, &.{
+        msquic_dir,
+        "src/inc",
+    }));
+
+    const os = target.os_tag orelse builtin.os.tag;
+    const arch = target.cpu_arch orelse builtin.cpu.arch;
+
+    const libmsquic_os_path = switch (os) {
+        .macos => "macos",
+        else => {
+            @panic("untested OS. fixme :)");
+        },
+    };
+    const arch_str = switch (arch) {
+        .aarch64 => "arm64",
+        else => {
+            @panic("untested arch. fixme :)");
+        },
+    };
+
+    // Release and openssl are defaults here. Not sure if we get anything from supporting debug
+    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
+
+    l.addLibPath(try std.fs.path.join(allocator, &.{
+        msquic_dir,
+        "artifacts/bin",
+        libmsquic_os_path,
+        libmsquic_arch_path,
+    }));
+
     // TODO read this from NIX
-    l.addLibPath("/nix/store/dj7wifb93h9yjkg46kpsxqhl2wjsyrsf-openssl-1.1.1n/lib");
+
+    const openssl_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/lib" });
+    // l.addLibPath("/nix/store/dj7wifb93h9yjkg46kpsxqhl2wjsyrsf-openssl-1.1.1n/lib");
+    l.addLibPath(openssl_path);
+
     l.linkSystemLibraryName("ssl");
     l.linkSystemLibraryName("crypto");
     l.linkSystemLibraryName("msquic");
@@ -90,9 +120,15 @@ fn linkMsquic(l: *std.build.LibExeObjStep) anyerror!void {
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
+    const allocator = blk: {
+        const _Allocator = std.heap.GeneralPurposeAllocator(.{});
+        var _allocator = _Allocator{};
+        break :blk _allocator.allocator();
+    };
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
+    const target = b.standardTargetOptions(.{});
 
     // const target = b.standardTargetOptions(.{
     //     default_target = CrossTarget{
@@ -104,6 +140,9 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     // try build_msquic(b);
 
     // const msquic_lib = msquic.create(b, target, mode);
+    // const build_msquic_lib = try build_msquic(b);
+    // const msquic_library_step = b.step("MsQuic", "Build the MsQuic library");
+    // msquic_library_step.dependOn(&build_msquic_lib.step);
 
     const udp_example = b.addExecutable("udpExample", "examples/udp.zig");
     udp_example.setBuildMode(mode);
@@ -119,26 +158,26 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     const msquic_example = b.addExecutable("msquicExample", "examples/msquic.zig");
     msquic_example.setBuildMode(mode);
-    try linkMsquic(msquic_example);
+    try linkMsquic(allocator, target, msquic_example);
     msquic_example.addPackage(pkgs.uri);
     const msquic_example_step = b.step("msquicExample", "Run msquic example");
     msquic_example_step.dependOn(&b.addInstallArtifact(msquic_example).step);
 
     const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
-    try includeLibSystemFromNix(msquic_zig);
+    try includeLibSystemFromNix(allocator, msquic_zig);
     msquic_zig.addIncludeDir("./msquic/src/inc/");
     const msquic_zig_step = b.step("msquicZig", "Build Zig wrapper around msquic api");
     const f: std.build.FileSource = .{ .generated = &msquic_zig.output_file };
     msquic_zig_step.dependOn(&msquic_zig.step);
     msquic_zig_step.dependOn(&b.addInstallFile(f, "msquic_wrapper.zig").step);
 
-    const msquic_sample = b.addTranslateC(.{ .path = "./msquic/src/tools/sample/sample.c" });
-    try includeLibSystemFromNix(msquic_sample);
-    msquic_sample.addIncludeDir("./msquic/src/inc/");
-    const msquic_sample_step = b.step("msquicSample", "Build Zig sample of msquic ");
-    const f2: std.build.FileSource = .{ .generated = &msquic_sample.output_file };
-    msquic_sample_step.dependOn(&msquic_sample.step);
-    msquic_sample_step.dependOn(&b.addInstallFile(f2, "msquic_sample.zig").step);
+    // const msquic_sample = b.addTranslateC(.{ .path = "./msquic/src/tools/sample/sample.c" });
+    // try includeLibSystemFromNix(msquic_sample);
+    // msquic_sample.addIncludeDir("./msquic/src/inc/");
+    // const msquic_sample_step = b.step("msquicSample", "Build Zig sample of msquic ");
+    // const f2: std.build.FileSource = .{ .generated = &msquic_sample.output_file };
+    // msquic_sample_step.dependOn(&msquic_sample.step);
+    // msquic_sample_step.dependOn(&b.addInstallFile(f2, "msquic_sample.zig").step);
 
     const lib = b.addStaticLibrary("zig-libp2p", "src/main.zig");
     // lib.linkLibC();
