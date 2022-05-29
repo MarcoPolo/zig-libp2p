@@ -41,7 +41,8 @@
                 deps.zig
                 self.packages.${system}.zls
                 pkgs.openssl
-                # pkgs.pkg-config
+                pkgs.pkg-config
+                pkgs.protobufc
               ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
                 Security
                 Foundation

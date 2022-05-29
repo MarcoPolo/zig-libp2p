@@ -56,6 +56,18 @@ fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     l.addIncludeDir(vars.get("LIBSYSTEM_INCLUDE").?);
 }
 
+fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerror!void {
+    var vars = try std.process.getEnvMap(allocator);
+
+    const openssl_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/lib" });
+    const openssl_inc_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/include" });
+    l.addLibPath(openssl_path);
+    l.addIncludeDir(openssl_inc_path);
+
+    l.linkSystemLibraryName("ssl");
+    l.linkSystemLibraryName("crypto");
+}
+
 fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
     // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
@@ -94,12 +106,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
 
     // TODO read this from NIX
 
-    const openssl_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/lib" });
-    // l.addLibPath("/nix/store/dj7wifb93h9yjkg46kpsxqhl2wjsyrsf-openssl-1.1.1n/lib");
-    l.addLibPath(openssl_path);
-
-    l.linkSystemLibraryName("ssl");
-    l.linkSystemLibraryName("crypto");
+    try linkOpenssl(allocator, l);
     l.linkSystemLibraryName("msquic");
 
     // Pull framework paths from Nix CFLAGS env
@@ -116,7 +123,6 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     l.linkFramework("Security");
     l.linkFramework("Foundation");
     l.linkFramework("CoreFoundation");
-    // l.linkLibC();
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
@@ -162,6 +168,14 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     msquic_example.addPackage(pkgs.uri);
     const msquic_example_step = b.step("msquicExample", "Run msquic example");
     msquic_example_step.dependOn(&b.addInstallArtifact(msquic_example).step);
+
+    const openssl_example = b.addExecutable("opensslExample", "examples/openssl.zig");
+    openssl_example.setBuildMode(mode);
+    // try linkOpenssl(allocator, openssl_example);
+    try linkMsquic(allocator, target, openssl_example);
+    try includeLibSystemFromNix(allocator, openssl_example);
+    const openssl_example_step = b.step("opensslExample", "Run openssl example");
+    openssl_example_step.dependOn(&b.addInstallArtifact(openssl_example).step);
 
     const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
     try includeLibSystemFromNix(allocator, msquic_zig);

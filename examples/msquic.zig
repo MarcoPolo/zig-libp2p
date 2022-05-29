@@ -329,7 +329,7 @@ const ServerCallback = struct {
             },
             MsQuic.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => {
                 // The peer gracefully shut down its send direction of the stream.
-                std.debug.print("strm={any} peer shutdown\n", .{stream});
+                std.debug.print("strm={any} peer shutdown send direction\n", .{stream});
                 self.serverSend(self.allocator, stream) catch |err| {
                     std.debug.print("strm={any} err={any} sending data\n", .{ stream, err });
                     _ = self.msquic.StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
