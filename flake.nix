@@ -43,6 +43,7 @@
                 pkgs.openssl
                 pkgs.pkg-config
                 pkgs.protobufc
+                pkgs.protobuf
               ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
                 Security
                 Foundation
@@ -50,6 +51,7 @@
               # PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
               LIBSYSTEM_INCLUDE = "${pkgs.darwin.Libsystem.outPath}/include";
+              PB_INCLUDE = "${pkgs.protobufc}/include";
               LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
               LIB_OPENSSL = "${pkgs.openssl.dev}";
             };

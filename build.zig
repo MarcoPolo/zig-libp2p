@@ -56,6 +56,12 @@ fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     l.addIncludeDir(vars.get("LIBSYSTEM_INCLUDE").?);
 }
 
+fn includeProtobuf(allocator: Allocator, l: anytype) anyerror!void {
+    var vars = try std.process.getEnvMap(allocator);
+    l.addIncludeDir(vars.get("PB_INCLUDE").?);
+    l.addIncludeDir("./pb");
+}
+
 fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
 
@@ -176,6 +182,13 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     try includeLibSystemFromNix(allocator, openssl_example);
     const openssl_example_step = b.step("opensslExample", "Run openssl example");
     openssl_example_step.dependOn(&b.addInstallArtifact(openssl_example).step);
+
+    const protobuf_example = b.addExecutable("protobufExample", "examples/protobuf.zig");
+    protobuf_example.setBuildMode(mode);
+    try includeLibSystemFromNix(allocator, protobuf_example);
+    try includeProtobuf(allocator, protobuf_example);
+    const protobuf_example_step = b.step("protobufExample", "Run pb example");
+    protobuf_example_step.dependOn(&b.addInstallArtifact(protobuf_example).step);
 
     const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
     try includeLibSystemFromNix(allocator, msquic_zig);
