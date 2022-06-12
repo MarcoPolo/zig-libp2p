@@ -7,16 +7,16 @@ const Allocator = std.mem.Allocator;
 
 // const mbedtls = @import("zig-mbedtls/mbedtls.zig");
 // const msquic = @import("msquic.zig");
-const pkgs = struct {
-    const network = std.build.Pkg{
-        .name = "network",
-        .path = .{ .path = "network/network.zig" },
-    };
-    const uri = std.build.Pkg{
-        .name = "uri",
-        .path = .{ .path = "zig-uri/uri.zig" },
-    };
-};
+// const pkgs = struct {
+// const network = std.build.Pkg{
+//     .name = "network",
+//     .path = .{ .path = "network/network.zig" },
+// };
+// const uri = std.build.Pkg{
+//     .name = "uri",
+//     .path = .{ .path = "zig-uri/uri.zig" },
+// };
+// };
 
 // fn build_msquic(b: *std.build.Builder) anyerror!void {
 //     const DOtherSide_dir = b.addSystemCommand(&[_][]const u8{
@@ -120,7 +120,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     var next_is_framework = false;
     while (frameworks_in_nix_cflags.next()) |val| {
         if (next_is_framework) {
-            std.debug.print("nix framework paths: {s}\n", .{val});
+            // std.debug.print("nix framework paths: {s}\n", .{val});
             l.addFrameworkDir(val);
         }
         next_is_framework = std.mem.eql(u8, val, "-iframework");
@@ -164,14 +164,37 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const quiche_example = b.addExecutable("quicheExample", "examples/quiche.zig");
     quiche_example.setBuildMode(mode);
     linkQuiche(quiche_example);
-    quiche_example.addPackage(pkgs.uri);
+    // quiche_example.addPackage(pkgs.uri);
     const quiche_example_step = b.step("quicheExample", "Run quiche example");
     quiche_example_step.dependOn(&b.addInstallArtifact(quiche_example).step);
+
+    const libp2p_tests = b.addTest("src/libp2p.zig");
+    libp2p_tests.setBuildMode(mode);
+    libp2p_tests.test_evented_io = true;
+
+    // const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+    // const test_cases_options = b.addOptions();
+    // libp2p_tests.addOptions("test_options", test_cases_options);
+    // test_cases_options.addOption(?[]const u8, "test_filter", test_filter);
+
+    // libp2p_tests.addOptions(test_filter);
+    // libp2p_tests.filter = test_filter;
+
+    var vars = try std.process.getEnvMap(allocator);
+    libp2p_tests.filter = vars.get("TEST_FILTER") orelse "";
+    // libp2p_tests.filter = "Sign and Verify";
+    // libp2p_tests.filter = "Spin up transport";
+    // libp2p_tests.filter = "Deserialize Public Key proto";
+    try linkMsquic(allocator, target, libp2p_tests);
+    try includeLibSystemFromNix(allocator, libp2p_tests);
+    libp2p_tests.addIncludeDir("src/workaround");
+    const libp2p_tests_step = b.step("libp2p_tests", "Run libp2p tests");
+    libp2p_tests_step.dependOn(&libp2p_tests.step);
 
     const msquic_example = b.addExecutable("msquicExample", "examples/msquic.zig");
     msquic_example.setBuildMode(mode);
     try linkMsquic(allocator, target, msquic_example);
-    msquic_example.addPackage(pkgs.uri);
+    // msquic_example.addPackage(pkgs.uri);
     const msquic_example_step = b.step("msquicExample", "Run msquic example");
     msquic_example_step.dependOn(&b.addInstallArtifact(msquic_example).step);
 
@@ -185,6 +208,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     const protobuf_example = b.addExecutable("protobufExample", "examples/protobuf.zig");
     protobuf_example.setBuildMode(mode);
+    protobuf_example.addPackagePath("protobuf", "zig-protobuf/src/protobuf.zig");
     try includeLibSystemFromNix(allocator, protobuf_example);
     try includeProtobuf(allocator, protobuf_example);
     const protobuf_example_step = b.step("protobufExample", "Run pb example");

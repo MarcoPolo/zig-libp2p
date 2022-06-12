@@ -1,15 +1,20 @@
 {
-  description = "zig libp2p";
+  description = "zig-libp2p";
   inputs.nixpkgs.url = "github:nixos/nixpkgs/release-21.11";
   inputs.nixpkgs-unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.zig-overlay.url = "github:arqv/zig-overlay";
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils }:
+
+  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { system = system; };
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         deps = (import ./dependencies.nix { inherit system; });
+        # Have to use 1.1 until msquic updates.
+        openssl = pkgs.openssl;
+        zig = zig-overlay.packages.${system}.master.latest;
       in
       {
         packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { };
@@ -38,22 +43,23 @@
           pkgs.mkShell
             rec {
               buildInputs = [
-                deps.zig
+                zig
                 self.packages.${system}.zls
-                pkgs.openssl
+                openssl
                 pkgs.pkg-config
                 pkgs.protobufc
                 pkgs.protobuf
+                pkgs.go_1_17
               ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
                 Security
                 Foundation
               ]);
-              # PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+              # PKG_CONFIG_PATH = "${pkgs.openssl_3_0.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
               LIBSYSTEM_INCLUDE = "${pkgs.darwin.Libsystem.outPath}/include";
               PB_INCLUDE = "${pkgs.protobufc}/include";
               LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
-              LIB_OPENSSL = "${pkgs.openssl.dev}";
+              LIB_OPENSSL = "${openssl.dev}";
             };
 
       });

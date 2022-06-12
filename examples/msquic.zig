@@ -251,7 +251,12 @@ fn runClient(allocator: Allocator, unsecure: bool, msquic: *MsQuic.QUIC_API_TABL
     };
     std.debug.print("cb ptr is: {any}\n", .{@ptrCast(*anyopaque, &callback)});
 
-    if (MsQuic.QuicStatus.isError(msquic.ConnectionOpen.?(registration.*, ClientCallback.connectionCallback, &callback, &connection))) {
+    if (MsQuic.QuicStatus.isError(msquic.ConnectionOpen.?(
+        registration.*,
+        ClientCallback.connectionCallback,
+        &callback,
+        &connection,
+    ))) {
         return error.ConnectionOpenFailed;
     }
     std.debug.print("Connection opened\n", .{});
@@ -397,7 +402,7 @@ const ServerCallback = struct {
                 self.msquic.ConnectionClose.?(connection);
             },
             MsQuic.QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED => {
-                std.debug.print("strm={any} all done\n", .{event.*.unnamed_0.PEER_STREAM_STARTED.Stream});
+                std.debug.print("strm={any} started\n", .{event.*.unnamed_0.PEER_STREAM_STARTED.Stream});
                 self.msquic.SetCallbackHandler.?(event.*.unnamed_0.PEER_STREAM_STARTED.Stream, Self.streamCallback, self);
             },
             MsQuic.QUIC_CONNECTION_EVENT_RESUMED => {
