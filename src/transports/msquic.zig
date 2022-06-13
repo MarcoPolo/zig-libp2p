@@ -130,6 +130,30 @@ const MsQuicTransport = struct {
                     conn_ptr.state = .Connected;
                     conn_ptr.fut.resolve();
                 },
+                MsQuic.QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED => {
+                    std.debug.print("\n!!!!!!!!\n\n", .{});
+                    // The peer has sent a certificate.
+                    var peer_cert_opaq = event.*.unnamed_0.PEER_CERTIFICATE_RECEIVED.Certificate orelse {
+                        std.debug.print("conn={any} Peer certificate is null\n", .{connection});
+                        return MsQuic.QuicStatus.InternalError;
+                    };
+
+                    var peer_cert_buf = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), peer_cert_opaq));
+                    var peer_cert = peer_cert_buf.Buffer[0..peer_cert_buf.Length];
+                    std.debug.print("conn={any} Peer certificate has len={}\n", .{ connection, peer_cert.len });
+                    var peer_x509 = crypto.X509.initFromDer(peer_cert) catch |err| {
+                        std.debug.print("conn={any} Failed to parse peer certificate: {any}\n", .{ connection, err });
+                        return MsQuic.QuicStatus.InternalError;
+                    };
+                    _ = peer_x509;
+                    defer peer_x509.deinit();
+
+                    var extension_data = peer_x509.getExtensionData(crypto.libp2p_extension_oid) catch |err| {
+                        std.debug.print("conn={any} Failed to parse peer certificate: {any}\n", .{ connection, err });
+                        return MsQuic.QuicStatus.InternalError;
+                    };
+                    std.debug.print("conn={any} Peer certificate has extension data: {s}\n", .{ connection, std.fmt.fmtSliceHexLower(extension_data) });
+                },
                 MsQuic.QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT => {
                     conn_ptr.rw_lock.lock();
                     defer conn_ptr.rw_lock.unlock();
@@ -374,6 +398,24 @@ const MsQuicTransport = struct {
                 return @bitCast(LeasedBufferState, prev_state_int);
             }
 
+            fn waitForNextTick() void {
+                var tick_node = Loop.NextTickNode{
+                    .prev = undefined,
+                    .next = undefined,
+                    .data = @frame(),
+                };
+
+                suspend {
+                    global_event_loop.onNextTick(&tick_node);
+                }
+                std.debug.print("Starting up again on main thread(s)\n", .{});
+            }
+
+            fn releaseAndWaitForNextTick(self: *LeasedBuffer, transport: *MsQuicTransport, stream: *Stream) void {
+                self.release(transport, stream);
+                waitForNextTick();
+            }
+
             fn release(self: *LeasedBuffer, transport: *MsQuicTransport, stream: *Stream) void {
                 const prev_state = self.atomicStateUpdate(LeasedBufferState{
                     .active_lease = false,
@@ -401,18 +443,6 @@ const MsQuicTransport = struct {
 
                     transport.msquic.getQuicAPI().StreamReceiveComplete.?(stream.msquic_stream_handle, self.buf.len);
                 }
-
-                var tick_node = Loop.NextTickNode{
-                    .prev = undefined,
-                    .next = undefined,
-                    .data = @frame(),
-                };
-
-                suspend {
-                    global_event_loop.onNextTick(&tick_node);
-                }
-
-                std.debug.print("Starting up again on main thread(s)\n", .{});
 
                 // transport.msquic.getQuicAPI().StreamReceiveComplete.?(stream.msquic_stream_handle, self.buf.len);
                 // TODO reuse these leased buffers
@@ -680,13 +710,15 @@ const MsQuicTransport = struct {
                         std.debug.print("strm={any} peer shutdown\n", .{msquic_stream});
                     },
                     MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
-                        std.debug.print("!!!!!!!strm={any} all done\n", .{msquic_stream});
+                        std.debug.print("strm={any} all done\n", .{msquic_stream});
                         if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
                             self.transport.msquic.getQuicAPI().StreamClose.?(msquic_stream);
                             stream_ptr.deinit(self.transport.allocator);
                         }
                     },
-                    else => {},
+                    else => {
+                        std.debug.print("stream={any} Unknown event: {}\n", .{ msquic_stream, event.*.Type });
+                    },
                 }
 
                 return MsQuic.QuicStatus.Success;
@@ -807,12 +839,10 @@ const MsQuicTransport = struct {
 
             var status = @bitCast(u32, MsQuic.EOPNOTSUPP);
             _ = listener;
-            std.debug.print("\n!!!!listener Event: {any}\n", .{event.*.Type});
+            std.debug.print("\nlistener Event: {any}\n", .{event.*.Type});
 
             switch (event.*.Type) {
                 MsQuic.QUIC_LISTENER_EVENT_NEW_CONNECTION => {
-                    std.debug.print("tail {*} \n", .{self.connection_queue.tail});
-                    std.debug.print("head {*} \n", .{self.connection_queue.head});
                     var conn_handle_node = self.connection_queue.get() orelse {
                         std.debug.print("Dropping connection. No buffered conns available\n", .{});
                         // TODO what's the correct code to return here?
@@ -847,7 +877,9 @@ const MsQuicTransport = struct {
                         resume pending_accept.data;
                     }
                 },
-                else => {},
+                else => {
+                    std.debug.print("listener Unknown event: {}\n", .{event.*.Type});
+                },
             }
 
             return status;
@@ -922,7 +954,6 @@ const MsQuicTransport = struct {
                 suspend {
                     self.pending_accepts.put(&frame_node);
                 }
-                std.debug.print("!!!!resuming\n", .{});
             }
         }
     };
@@ -983,7 +1014,18 @@ const MsQuicTransport = struct {
     connection_system: ConnectionSystem,
     stream_system: StreamSystem,
 
-    pub fn init(allocator: Allocator, app_name: [:0]const u8, pkcs12: *crypto.PKCS12) !Self {
+    const Options = struct {
+        cred_flags: MsQuic.QUIC_CREDENTIAL_FLAGS = 0,
+
+        fn default() Options {
+            return Options{
+                // We do the cert validation ourselves with https://github.com/libp2p/specs/blob/master/tls/tls.md
+                .cred_flags = MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION,
+            };
+        }
+    };
+
+    pub fn init(allocator: Allocator, app_name: [:0]const u8, pkcs12: *crypto.PKCS12, options: Options) !Self {
         // Workaround a bug in the zig compiler. It loses this symbol.
         var max_mem = workaround.CGroupGetMemoryLimit();
         _ = max_mem;
@@ -1007,7 +1049,7 @@ const MsQuicTransport = struct {
             return error.RegistrationFailed;
         }
 
-        const configuration = try loadConfiguration(msquic, &registration, pkcs12);
+        const configuration = try loadConfiguration(msquic, &registration, pkcs12, options);
         const handle = msquic_instances.pushInstance(msquic);
 
         return MsQuicTransport{
@@ -1030,7 +1072,7 @@ const MsQuicTransport = struct {
         self.stream_system.deinit();
     }
 
-    fn loadConfiguration(msquic: *const MsQuic.QUIC_API_TABLE, registration: *MsQuic.HQUIC, pkcs12: *crypto.PKCS12) !MsQuic.HQUIC {
+    fn loadConfiguration(msquic: *const MsQuic.QUIC_API_TABLE, registration: *MsQuic.HQUIC, pkcs12: *crypto.PKCS12, options: Options) !MsQuic.HQUIC {
         var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
         settings.IdleTimeoutMs = 1000;
@@ -1057,12 +1099,17 @@ const MsQuicTransport = struct {
         var pkcs12_bytes = [_]u8{0} ** 1024;
         const pkcs12_len = try pkcs12.read(pkcs12_bytes[0..]);
         const pkcs12_slice = pkcs12_bytes[0..pkcs12_len];
+        std.debug.print("pkcs12_len: {}\n", .{pkcs12_len});
 
         cred_helper.cert.Asn1Blob = pkcs12_slice.ptr;
         cred_helper.cert.Asn1BlobLength = @intCast(u32, pkcs12_slice.len);
         cred_helper.cert.PrivateKeyPassword = "";
         cred_helper.cred_config.Type = MsQuic.QUIC_CREDENTIAL_TYPE_CERTIFICATE_PKCS12;
         cred_helper.cred_config.CertPtr.CertificatePkcs12 = &cred_helper.cert;
+        cred_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
+        cred_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+        cred_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
+        cred_helper.cred_config.Flags |= options.cred_flags;
 
         var configuration: MsQuic.HQUIC = undefined;
 
@@ -1132,14 +1179,20 @@ const MsQuicTransport = struct {
 
 test "Spin up transport" {
     const allocator = std.testing.allocator;
-    var kp = try crypto.ED25519KeyPair.new();
-    defer kp.deinit();
-    const x509 = try crypto.X509.init(kp);
+
+    var host_key = try crypto.ED25519KeyPair.new();
+    var cert_key = try crypto.ED25519KeyPair.new();
+    defer host_key.deinit();
+    defer cert_key.deinit();
+    var x509 = try crypto.X509.init(cert_key);
     defer x509.deinit();
-    var pkcs12 = try crypto.PKCS12.init(kp, x509);
+
+    try crypto.Libp2pTLSCert.insertExtension(&x509, try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }));
+
+    var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
     defer pkcs12.deinit();
 
-    var transport = try MsQuicTransport.init(allocator, "test", &pkcs12);
+    var transport = try MsQuicTransport.init(allocator, "test", &pkcs12, MsQuicTransport.Options.default());
     defer transport.deinit();
 
     // TODO this should take in an allocated listener or transport should allocate a listener.
@@ -1170,23 +1223,23 @@ test "Spin up transport" {
                 }
                 var closure_stream = try closure_transport.stream_system.handle_allocator.getPtr(stream_handle_1);
                 errdefer {
-                    std.debug.print("\n!!!!!!!Found error\n", .{});
+                    std.debug.print("\nFound error\n", .{});
                 }
                 var count: usize = 0;
                 while (true) : (count += 1) {
-                    std.debug.print("\n!!Read loop!!\n", .{});
+                    std.debug.print("\nRead loop\n", .{});
 
                     const leased_buf = try await async closure_stream.recvWithLease(closure_transport);
                     std.debug.print("\nRead data {s}\n", .{leased_buf.buf});
                     if (count % 4 == 0) {
                         // To test what happens if we suspend with a leased buffer
-                        std.time.sleep(1 * std.time.ns_per_ms);
+                        // std.time.sleep(1 * std.time.ns_per_ms);
                     }
                     leased_buf.release(
                         closure_transport,
                         closure_stream,
                     );
-                    std.debug.print("!!!!!! Released buffer\n", .{});
+                    std.debug.print("Released buffer\n", .{});
                 }
             }
         };
@@ -1204,9 +1257,9 @@ test "Spin up transport" {
     const incoming_stream_ptr = try transport.stream_system.handle_allocator.getPtr(incoming_stream);
     const leased_buf = try incoming_stream_ptr.recvWithLease(&transport);
     std.debug.print("\nRead server data {s}\n", .{leased_buf.buf});
-    leased_buf.release(&transport, incoming_stream_ptr);
+    leased_buf.releaseAndWaitForNextTick(&transport, incoming_stream_ptr);
 
-    var msgs_to_send: usize = 20;
+    var msgs_to_send: usize = 2;
     while (msgs_to_send > 0) : (msgs_to_send -= 1) {
         var msg_bytes = try std.fmt.allocPrint(allocator, "Hello from server. Countdown: {}\n", .{msgs_to_send});
         try await async incoming_stream_ptr.send(&transport, msg_bytes);
@@ -1214,7 +1267,7 @@ test "Spin up transport" {
     }
 }
 
-test "Spin up transport with cert extension" {
+test "transport with cert extension" {
     const allocator = std.testing.allocator;
     var host_key = try crypto.ED25519KeyPair.new();
     var cert_key = try crypto.ED25519KeyPair.new();
@@ -1228,6 +1281,6 @@ test "Spin up transport with cert extension" {
     var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
     defer pkcs12.deinit();
 
-    var transport = try MsQuicTransport.init(allocator, "test", &pkcs12);
+    var transport = try MsQuicTransport.init(allocator, "test", &pkcs12, MsQuicTransport.Options.default());
     defer transport.deinit();
 }

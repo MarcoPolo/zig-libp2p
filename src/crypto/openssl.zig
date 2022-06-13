@@ -17,7 +17,7 @@ const c = @cImport({
 
 // https://github.com/libp2p/specs/blob/master/tls/tls.md#libp2p-public-key-extension
 const libp2p_tls_handshake_prefix = "libp2p-tls-handshake:";
-const extension_oid = "1.3.6.1.4.1.53594.1.1";
+pub const libp2p_extension_oid = "1.3.6.1.4.1.53594.1.1";
 
 pub const PKCS12 = struct {
     bundle: *c.PKCS12,
@@ -56,6 +56,15 @@ pub const PKCS12 = struct {
             return error.PKCS12SerFailed;
         }
         return @intCast(usize, len);
+    }
+
+    pub fn initFromDer(buffer: []u8) !PKCS12 {
+        var buf_btr: ?[*]u8 = buffer.ptr;
+        var pkcs12bundle = c.d2i_PKCS12(null, &buf_btr, @intCast(c_long, buffer.len));
+        if (pkcs12bundle == null) {
+            return error.PKCS12DeserFailed;
+        }
+        return PKCS12{ .bundle = pkcs12bundle.? };
     }
 
     pub fn deinit(self: PKCS12) void {
@@ -118,6 +127,34 @@ pub const X509 = struct {
         c.X509_free(self.inner);
     }
 
+    pub fn initFromDer(buffer: []u8) !X509 {
+        var buf_btr: ?[*]u8 = buffer.ptr;
+        var inner = c.d2i_X509(null, &buf_btr, @intCast(c_long, buffer.len));
+        if (inner == null) {
+            return error.DeserFailed;
+        }
+        return X509{ .inner = inner.? };
+    }
+
+    // Returns a slice to internal data. Caller should not attempt to free the slice.
+    // https://www.openssl.org/docs/man1.1.1/man3/X509_EXTENSION_get_object.html
+    pub fn getExtensionData(self: X509, oid: []const u8) ![]u8 {
+        var obj = c.OBJ_txt2obj(oid.ptr, 1);
+        defer c.ASN1_OBJECT_free(obj);
+        var ext_loc = c.X509_get_ext_by_OBJ(self.inner, obj, -1);
+        if (ext_loc == -1) {
+            return error.ExtensionNotFound;
+        }
+
+        var ext = c.X509_get_ext(self.inner, ext_loc);
+        assert(ext != null);
+
+        var os = c.X509_EXTENSION_get_data(ext);
+        assert(os != null);
+
+        return os.*.data[0..@intCast(usize, os.*.length)];
+    }
+
     // fn makeLibp2pExtension(self: X509) ![]u8 {
     //     // const ext = c.X509_add_ext(self.inner, c.NID_subject_alt_name,
     // }
@@ -159,7 +196,7 @@ pub const ED25519KeyPair = struct {
             out[0] = Key.pbFieldKey(1, 0);
             out[1] = @enumToInt(Key.KeyType.Ed25519);
 
-            out[2] = Key.pbFieldKey(2, 0);
+            out[2] = Key.pbFieldKey(2, 2);
             out[3] = key_len;
 
             var expected_len: usize = key_len;
@@ -172,6 +209,26 @@ pub const ED25519KeyPair = struct {
             assert(expected_len == key_len);
             return pb_encoded_len;
         }
+
+        fn initFromRaw(k: []const u8) !PublicKey {
+            var key = c.EVP_PKEY_new_raw_public_key(c.EVP_PKEY_ED25519, null, k.ptr, k.len);
+            if (key == null) {
+                return error.InitPubKeyFailed;
+            }
+            return PublicKey{ .key = key.? };
+        }
+
+        fn initFromKey(k: Key) !PublicKey {
+            if (k.key_type != .Ed25519) {
+                return error.WrongKeyType;
+            }
+
+            return try initFromRaw(k.key_bytes);
+        }
+
+        fn deinit(self: @This()) void {
+            c.EVP_PKEY_free(self.key);
+        }
     };
 
     const Signature = struct {
@@ -179,6 +236,16 @@ pub const ED25519KeyPair = struct {
 
         // https://ed25519.cr.yp.to sig fits in 64 bytes
         const Len = 64;
+
+        fn fromSlice(s: []const u8) !Signature {
+            if (s.len < Len) {
+                return error.WrongSignatureLen;
+            }
+
+            var self = Signature{ .sig = [_]u8{0} ** Len };
+            std.mem.copy(u8, self.sig[0..], s[0..Len]);
+            return self;
+        }
 
         fn verify(self: Signature, pub_key: ED25519KeyPair.PublicKey, msg: []u8) !bool {
             var md_ctx = c.EVP_MD_CTX_new();
@@ -234,7 +301,7 @@ pub const ED25519KeyPair = struct {
         return error.ImplementMe;
     }
 
-    fn sign(self: ED25519KeyPair, msg: []u8) !Signature {
+    fn sign(self: ED25519KeyPair, msg: []const u8) !Signature {
         var sig = Signature{ .sig = [_]u8{0} ** Signature.Len };
         var sig_len: usize = Signature.Len;
         // EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
@@ -273,14 +340,6 @@ pub const ED25519KeyPair = struct {
     }
 };
 
-pub const PublicKey = union {
-    ed25519: struct {},
-
-    fn checkSig() !bool {
-        return error.ImplementMe;
-    }
-};
-
 pub const Key = struct {
     key_type: KeyType,
     key_bytes: []u8,
@@ -312,12 +371,12 @@ pub const Key = struct {
         try out.appendSlice(self.key_bytes);
     }
 
-    const PbField = union(enum) { u8: u8, bytes: []u8 };
+    const PbField = union(enum) { u8: u8, bytes: []const u8 };
 
-    fn deserializePb(allocator: Allocator, buffer: []u8) !Key {
+    fn deserializePb(allocator: Allocator, buffer: []const u8) !Key {
         // https://developers.google.com/protocol-buffers/docs/encoding
         var key_type: ?KeyType = undefined;
-        var key_bytes: ?[]u8 = undefined;
+        var key_bytes: ?[]const u8 = undefined;
         var i: usize = 0;
         while (i < buffer.len) {
             var field = protobuf.decode_varint(u8, buffer[i..]);
@@ -390,7 +449,7 @@ pub const Libp2pTLSCert = struct {
 
         _ = x509;
 
-        var obj = c.OBJ_txt2obj(extension_oid, 1);
+        var obj = c.OBJ_txt2obj(libp2p_extension_oid, 1);
         defer c.ASN1_OBJECT_free(obj);
 
         var ex = c.X509_EXTENSION_create_by_OBJ(null, obj, 0, os);
@@ -404,11 +463,6 @@ pub const Libp2pTLSCert = struct {
     }
 
     pub fn serializeLibp2pExt(self: @This()) ![extension_byte_size]u8 {
-        var libp2p_extension_data = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = self.cert_key.key });
-
-        const signature = try self.host_key.sign(libp2p_extension_data[0..]);
-        std.debug.print("Signature len: {}\n", .{signature.sig.len});
-
         var out = [_]u8{0} ** extension_byte_size;
 
         // Have the compiler check our math
@@ -429,10 +483,10 @@ pub const Libp2pTLSCert = struct {
 
         out[4 + bytes_written] = octet_tag;
         actual_bytes_written += 1;
-        out[5 + bytes_written] = ED25519KeyPair.PublicKey.libp2p_extension_len;
+        out[5 + bytes_written] = ED25519KeyPair.Signature.Len;
         actual_bytes_written += 1;
 
-        libp2p_extension_data = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = self.host_key.key });
+        var libp2p_extension_data = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = self.cert_key.key });
 
         try self.host_key.signToDest(
             libp2p_extension_data[0..],
@@ -445,6 +499,45 @@ pub const Libp2pTLSCert = struct {
         }
 
         return out;
+    }
+
+    const DeserializedParts = struct {
+        host_pubkey_bytes: []const u8,
+        extension_data: []const u8,
+    };
+
+    // Return slices to serialized public key and
+    pub fn deserializeLibp2pExt(buffer: []const u8) !DeserializedParts {
+        if (buffer[0] != sequence_tag) {
+            return error.MalformedExtension;
+        }
+
+        if (buffer[2] != octet_tag) {
+            return error.MalformedExtension;
+        }
+
+        var pk_len = buffer[3];
+        if (pk_len >> 7 == 1) {
+            // TODO this doesn't take into account any lens > 127
+            return error.PkLenTooLong;
+        }
+        var pk_bytes = buffer[4..][0..pk_len];
+
+        if (buffer[4 + pk_len] != octet_tag) {
+            return error.MalformedExtension;
+        }
+
+        var ext_len = buffer[5 + pk_len];
+        if (ext_len >> 7 == 1) {
+            // TODO this doesn't take into account any lens > 127
+            return error.ExtLenTooLong;
+        }
+        var ext_bytes = buffer[6 + pk_len ..][0..ext_len];
+
+        return DeserializedParts{
+            .host_pubkey_bytes = pk_bytes,
+            .extension_data = ext_bytes,
+        };
     }
 };
 
@@ -510,8 +603,6 @@ test "libp2p extension" {
 }
 
 test "make cert" {
-    // const allocator = std.testing.allocator;
-
     var host_key = try ED25519KeyPair.new();
     defer host_key.deinit();
 
@@ -524,4 +615,22 @@ test "make cert" {
     defer x509.deinit();
 
     try Libp2pTLSCert.insertExtension(&x509, libp2p_extension);
+
+    // Verification part
+
+    const libp2p_decoded_again = try Libp2pTLSCert.deserializeLibp2pExt(libp2p_extension[0..]);
+    _ = libp2p_decoded_again;
+
+    const allocator = std.testing.allocator;
+    var k = try Key.deserializePb(allocator, libp2p_decoded_again.host_pubkey_bytes);
+    defer k.deinit(allocator);
+
+    // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
+    var host_pub_key = try ED25519KeyPair.PublicKey.initFromKey(k);
+    defer host_pub_key.deinit();
+
+    var libp2p_extension_data_again = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = cert_key.key });
+    var sig = try ED25519KeyPair.Signature.fromSlice(libp2p_decoded_again.extension_data);
+    const valid = try sig.verify(host_pub_key, libp2p_extension_data_again[0..]);
+    try std.testing.expect(valid);
 }

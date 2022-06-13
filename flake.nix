@@ -13,7 +13,8 @@
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         deps = (import ./dependencies.nix { inherit system; });
         # Have to use 1.1 until msquic updates.
-        openssl = pkgs.openssl;
+        # openssl = pkgs.openssl;
+        openssl = pkgs-unstable.quictls;
         zig = zig-overlay.packages.${system}.master.latest;
       in
       {
