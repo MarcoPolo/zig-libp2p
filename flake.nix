@@ -16,6 +16,7 @@
         # openssl = pkgs.openssl;
         openssl = pkgs-unstable.quictls;
         zig = zig-overlay.packages.${system}.master.latest;
+        zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
       in
       {
         packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { };
@@ -61,6 +62,7 @@
               PB_INCLUDE = "${pkgs.protobufc}/include";
               LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
               LIB_OPENSSL = "${openssl.dev}";
+              ZIG_DEPS = "${zig-deps.depsJson}";
             };
 
       });

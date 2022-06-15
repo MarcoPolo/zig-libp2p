@@ -182,6 +182,38 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     var vars = try std.process.getEnvMap(allocator);
     libp2p_tests.filter = vars.get("TEST_FILTER") orelse "";
+    // libp2p_tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+
+    // Handle reading zig-deps.nix output
+    {
+        // Open the file
+        const file = try std.fs.openFileAbsolute((try std.process.getEnvMap(std.testing.allocator)).get("ZIG_DEPS").?, .{ .mode = .read_only });
+        defer file.close();
+
+        // Read the contents
+        const buffer_size = 1_000_000;
+        const file_buffer = try file.readToEndAlloc(allocator, buffer_size);
+        defer allocator.free(file_buffer);
+
+        var parser = std.json.Parser.init(allocator, false);
+        defer parser.deinit();
+
+        var tree = parser.parse(file_buffer) catch @panic("failed to parse JSON");
+        defer tree.deinit();
+
+        var dep_iterator = tree.root.Object.iterator();
+        while (dep_iterator.next()) |dep| {
+            const dep_name = dep.key_ptr;
+            const dep_location = dep.value_ptr.String;
+
+            const dep_pkg = std.build.Pkg{
+                .name = dep_name.*,
+                .source = .{ .path = dep_location },
+            };
+            libp2p_tests.addPackage(dep_pkg);
+        }
+    }
+
     // libp2p_tests.filter = "Sign and Verify";
     // libp2p_tests.filter = "Spin up transport";
     // libp2p_tests.filter = "Deserialize Public Key proto";

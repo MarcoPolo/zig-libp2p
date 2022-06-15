@@ -70,6 +70,7 @@ pub const libp2p = struct {};
 test {
     _ = @import("./transports/msquic.zig");
     _ = @import("./crypto/openssl.zig");
+    _ = @import("./crypto.zig");
     std.testing.refAllDecls(@This());
 }
 

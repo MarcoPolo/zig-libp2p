@@ -2,6 +2,7 @@ const std = @import("std");
 const protobuf = @import("../util/protobuf.zig");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const no_padding_encoding = @import("../crypto.zig").no_padding_encoding;
 
 const c = @cImport({
     // See https://github.com/ziglang/zig/issues/515
@@ -155,6 +156,19 @@ pub const X509 = struct {
         return os.*.data[0..@intCast(usize, os.*.length)];
     }
 
+    pub fn getPubKey(self: X509) !ED25519KeyPair.PublicKey {
+        var inner_key = c.X509_get_pubkey(self.inner);
+        if (inner_key == null) {
+            return error.NoPubKey;
+        }
+
+        if (c.EVP_PKEY_base_id(inner_key) != c.EVP_PKEY_ED25519) {
+            return error.WrongPubKey;
+        }
+
+        return ED25519KeyPair.PublicKey{ .key = inner_key.? };
+    }
+
     // fn makeLibp2pExtension(self: X509) ![]u8 {
     //     // const ext = c.X509_add_ext(self.inner, c.NID_subject_alt_name,
     // }
@@ -208,6 +222,90 @@ pub const ED25519KeyPair = struct {
             }
             assert(expected_len == key_len);
             return pb_encoded_len;
+        }
+
+        const PeerIDStrLen = blk: {
+            const bytes = ([_]u8{
+                // cidv1
+                0x01,
+                // libp2p-key
+                0x72,
+                // multihash identity
+                0x00,
+                @intCast(u8, pb_encoded_len),
+            } ++ [_]u8{0} ** pb_encoded_len);
+
+            // +1 for the multibase prefix
+            const b32_size = no_padding_encoding.encodeLen(bytes.len) + 1;
+            break :blk b32_size;
+        };
+
+        fn toPeerIDString(self: @This()) ![PeerIDStrLen]u8 {
+            var bytes = (([_]u8{
+                // cidv1
+                0x01,
+                // libp2p-key
+                0x72,
+                // multihash identity
+                0x00,
+                @intCast(u8, pb_encoded_len),
+            }) ++ [_]u8{0} ** pb_encoded_len);
+
+            // The key should be written starting at the 5th byte
+            _ = try self.serializePb(bytes[4..]);
+
+            // +1 for the multibase prefix
+            const b32_size = comptime no_padding_encoding.encodeLen(bytes.len) + 1;
+            var buf = [_]u8{0} ** b32_size;
+            // Multibase "b" base32
+            buf[0] = 'b';
+
+            _ = no_padding_encoding.encode(buf[1..], bytes[0..]);
+
+            return buf;
+        }
+
+        fn matchesPeerIDStr(self: @This(), str: []u8) !bool {
+            if (str.len != PeerIDStrLen) {
+                return error.WrongLen;
+            }
+
+            var actual_peer_id_str = try self.toPeerIDString();
+
+            var i: usize = 0;
+            while (i < PeerIDStrLen) : (i += 1) {
+                if (str[i] != actual_peer_id_str[i]) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        fn matchesKey(self: @This(), other_key: Key) !bool {
+            if (other_key.key_type != .Ed25519) {
+                return error.WrongKeyType;
+            }
+
+            const other_key_bytes = other_key.key_bytes;
+            if (other_key_bytes.len != key_len) {
+                return error.WrongLen;
+            }
+
+            var self_key = [_]u8{0} ** key_len;
+            var expected_len: usize = key_len;
+            if (c.EVP_PKEY_get_raw_public_key(self.key, &self_key, &expected_len) == 0) {
+                return error.GetPubKeyFailed;
+            }
+
+            var i: usize = 0;
+            while (i < key_len) : (i += 1) {
+                if (other_key_bytes[i] != self_key[i]) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         fn initFromRaw(k: []const u8) !PublicKey {
@@ -353,6 +451,48 @@ pub const Key = struct {
 
     fn deinit(self: Key, allocator: Allocator) void {
         allocator.free(self.key_bytes);
+    }
+
+    fn toPeerIDString(self: Key, allocator: Allocator) ![]u8 {
+        switch (self.key_type) {
+            .Ed25519 => {
+                var pub_key = try ED25519KeyPair.PublicKey.initFromKey(self);
+                defer pub_key.deinit();
+                const peer_id = try pub_key.toPeerIDString();
+                const peer_id_copy = try allocator.alloc(u8, peer_id.len);
+                std.mem.copy(u8, peer_id_copy, peer_id[0..]);
+                return peer_id_copy;
+            },
+            else => {
+                return error.UnsupportedKeyType;
+            },
+        }
+    }
+
+    fn matchesPeerIDStr(self: Key, peer_id_str: []u8) !bool {
+        switch (self.key_type) {
+            .Ed25519 => {
+                var pub_key = try ED25519KeyPair.PublicKey.initFromKey(self);
+                defer pub_key.deinit();
+                return pub_key.matchesPeerIDStr(peer_id_str);
+            },
+            else => {
+                return error.UnsupportedKeyType;
+            },
+        }
+    }
+
+    fn matchesKey(self: Key, other_key: Key) !bool {
+        switch (self.key_type) {
+            .Ed25519 => {
+                var pub_key = try ED25519KeyPair.PublicKey.initFromKey(self);
+                defer pub_key.deinit();
+                return pub_key.matchesKey(other_key);
+            },
+            else => {
+                return error.UnsupportedKeyType;
+            },
+        }
     }
 
     pub inline fn pbFieldKey(num: u8, tag: u3) u8 {
@@ -539,6 +679,29 @@ pub const Libp2pTLSCert = struct {
             .extension_data = ext_bytes,
         };
     }
+
+    pub fn verify(allocator: Allocator, x509: X509) !Key {
+        const libp2p_extension = try x509.getExtensionData(libp2p_extension_oid);
+        const libp2p_decoded_again = try deserializeLibp2pExt(libp2p_extension);
+
+        const cert_key = try x509.getPubKey();
+        defer cert_key.deinit();
+
+        var k = try Key.deserializePb(allocator, libp2p_decoded_again.host_pubkey_bytes);
+
+        // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
+        var host_pub_key = try ED25519KeyPair.PublicKey.initFromKey(k);
+        defer host_pub_key.deinit();
+
+        var libp2p_extension_data_again = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = cert_key.key });
+        var sig = try ED25519KeyPair.Signature.fromSlice(libp2p_decoded_again.extension_data);
+        const valid = try sig.verify(host_pub_key, libp2p_extension_data_again[0..]);
+        if (!valid) {
+            return error.SignatureVerificationFailed;
+        }
+
+        return k;
+    }
 };
 
 test "Generate Key, and more" {
@@ -618,19 +781,45 @@ test "make cert" {
 
     // Verification part
 
-    const libp2p_decoded_again = try Libp2pTLSCert.deserializeLibp2pExt(libp2p_extension[0..]);
-    _ = libp2p_decoded_again;
-
     const allocator = std.testing.allocator;
-    var k = try Key.deserializePb(allocator, libp2p_decoded_again.host_pubkey_bytes);
+    const k = try Libp2pTLSCert.verify(allocator, x509);
     defer k.deinit(allocator);
 
-    // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
-    var host_pub_key = try ED25519KeyPair.PublicKey.initFromKey(k);
-    defer host_pub_key.deinit();
+    var expected_peer_id = try ED25519KeyPair.PublicKey.toPeerIDString(.{ .key = host_key.key });
+    var expected_peer_id_slice: []u8 = expected_peer_id[0..];
+    var actual_peer_id = try k.toPeerIDString(allocator);
+    defer allocator.free(actual_peer_id);
 
-    var libp2p_extension_data_again = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = cert_key.key });
-    var sig = try ED25519KeyPair.Signature.fromSlice(libp2p_decoded_again.extension_data);
-    const valid = try sig.verify(host_pub_key, libp2p_extension_data_again[0..]);
-    try std.testing.expect(valid);
+    // Various ways to check that the key is correct
+    try std.testing.expect(try ED25519KeyPair.PublicKer.PublicKey.matchesKey(.{ .key = host_key.key }, k));
+    try std.testing.expect(try k.matchesPeerIDStr(expected_peer_id_slice));
+    try std.testing.expect(try ED25519KeyPair.PublicKey.matchesPeerIDStr(.{ .key = host_key.key }, actual_peer_id));
+    try std.testing.expectEqualStrings(expected_peer_id_slice, actual_peer_id);
+
+    // const peer_id =
+
+    // const libp2p_decoded_again = try Libp2pTLSCert.deserializeLibp2pExt(libp2p_extension[0..]);
+    // _ = libp2p_decoded_again;
+
+    // const allocator = std.testing.allocator;
+    // var k = try Key.deserializePb(allocator, libp2p_decoded_again.host_pubkey_bytes);
+    // defer k.deinit(allocator);
+
+    // // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
+    // var host_pub_key = try ED25519KeyPair.PublicKey.initFromKey(k);
+    // defer host_pub_key.deinit();
+
+    // var libp2p_extension_data_again = ED25519KeyPair.PublicKey.libp2pExtension(.{ .key = cert_key.key });
+    // var sig = try ED25519KeyPair.Signature.fromSlice(libp2p_decoded_again.extension_data);
+    // const valid = try sig.verify(host_pub_key, libp2p_extension_data_again[0..]);
+    // try std.testing.expect(valid);
+}
+
+test "To PeerID string" {
+    const kp = try ED25519KeyPair.new();
+    defer kp.deinit();
+
+    const pub_key = ED25519KeyPair.PublicKey{ .key = kp.key };
+    const peerIDStr = try pub_key.toPeerIDString();
+    std.debug.print("peer id {s}\n", .{peerIDStr});
 }
