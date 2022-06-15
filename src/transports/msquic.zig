@@ -254,6 +254,9 @@ const MsQuicTransport = struct {
             Closed,
             ErrProtocolNegotiationFailed,
         },
+        is_inbound: bool,
+        peer_key: ?crypto.Key = null,
+        peer_address: ?std.net.Address = null,
         ready_streams: StreamQueue,
         pending_accepts: PendingStreamAcceptQueue,
 
@@ -264,9 +267,10 @@ const MsQuicTransport = struct {
         const StreamQueue = std.atomic.Queue(StreamSystem.Handle);
         const PendingStreamAcceptQueue = std.atomic.Queue(*std.event.Lock);
 
-        fn init() !Connection {
+        fn init(is_inbound: bool) !Connection {
             var self = Connection{
                 .rw_lock = .{},
+                .is_inbound = is_inbound,
                 .state = .Connecting,
                 .connection_handle = undefined,
                 .ready_streams = StreamQueue.init(),
@@ -857,10 +861,17 @@ const MsQuicTransport = struct {
                         std.debug.print("Stale connection handle!", .{});
                         return MsQuic.QuicStatus.InternalError;
                     };
-                    conn_ptr.* = Connection.init() catch {
+                    conn_ptr.* = Connection.init(true) catch {
                         std.debug.print("Failed to allocate connection", .{});
                         return MsQuic.QuicStatus.InternalError;
                     };
+                    const remote_addr_sa = event.*.unnamed_0.NEW_CONNECTION.Info.*.RemoteAddress;
+                    var socket_addr = std.x.os.Socket.Address.fromNative(@ptrCast(*const std.os.sockaddr, remote_addr_sa));
+                    const addr: std.net.Address = switch (socket_addr) {
+                        .ipv4 => std.net.Address.initIp4(socket_addr.ipv4.host.octets, socket_addr.ipv4.port),
+                        .ipv6 => std.net.Address.initIp6(socket_addr.ipv6.host.octets, socket_addr.ipv4.port, 0, socket_addr.ipv6.host.scope_id),
+                    };
+                    conn_ptr.*.peer_address = addr;
 
                     self.transport.msquic.getQuicAPI().SetCallbackHandler.?(
                         event.*.unnamed_0.NEW_CONNECTION.Connection,
@@ -1131,12 +1142,15 @@ const MsQuicTransport = struct {
         return try Listener.init(allocator, self, self.msquic, &self.registration, &self.configuration, addr, 4);
     }
 
-    pub fn startConnection(self: *Self, allocator: Allocator, target: [*c]const u8, port: u16) callconv(.Async) !ConnectionSystem.Handle {
+    pub fn startConnection(self: *Self, allocator: Allocator, target: []const u8, port: u16) callconv(.Async) !ConnectionSystem.Handle {
+        // TODO resove DNS names
+
         var conn_context_ptr = try allocator.create(ConnectionContext);
 
         const conn_handle = try self.connection_system.handle_allocator.allocSlot();
         const conn_ptr = try self.connection_system.handle_allocator.getPtr(conn_handle);
-        conn_ptr.* = try Connection.init();
+        conn_ptr.* = try Connection.init(false);
+        conn_ptr.*.peer_address = try std.net.Address.parseIp(target, port);
 
         conn_context_ptr.* = ConnectionContext{
             .connection_handle = conn_handle,
@@ -1158,7 +1172,7 @@ const MsQuicTransport = struct {
             conn_ptr.connection_handle,
             self.configuration,
             MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC,
-            target,
+            @ptrCast([*c]const u8, target),
             port,
         );
         if (MsQuic.QuicStatus.isError(status)) {
@@ -1202,7 +1216,7 @@ test "Spin up transport" {
     const listener_ptr = try transport.listener_system.handle_allocator.getPtr(listener);
     var incoming_conn_frame = async listener_ptr.accept();
 
-    const connection = try await async transport.startConnection(allocator, "localhost", 54321);
+    const connection = try await async transport.startConnection(allocator, "127.0.0.1", 54321);
     // TODO dealloc connection
     std.debug.print("\ngot connection {}\n", .{connection});
     {

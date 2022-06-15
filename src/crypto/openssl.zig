@@ -177,10 +177,11 @@ pub const X509 = struct {
 pub const ED25519KeyPair = struct {
     key: *c.EVP_PKEY,
 
+    const key_len = 32;
+
     const PublicKey = struct {
         key: *c.EVP_PKEY,
 
-        const key_len = 32;
         const DER_encoded_len = 44;
         const pb_encoded_len = key_len + 4;
         const libp2p_extension_len = DER_encoded_len + libp2p_tls_handshake_prefix.len;
@@ -208,7 +209,8 @@ pub const ED25519KeyPair = struct {
         fn serializePb(self: @This(), out: []u8) !usize {
             assert(out.len >= pb_encoded_len);
             out[0] = Key.pbFieldKey(1, 0);
-            out[1] = @enumToInt(Key.KeyType.Ed25519);
+            // TODO handle non-ed25519 keys
+            out[1] = @enumToInt(KeyType.Ed25519);
 
             out[2] = Key.pbFieldKey(2, 2);
             out[3] = key_len;
@@ -283,11 +285,11 @@ pub const ED25519KeyPair = struct {
         }
 
         fn matchesKey(self: @This(), other_key: Key) !bool {
-            if (other_key.key_type != .Ed25519) {
+            if (other_key != .Ed25519) {
                 return error.WrongKeyType;
             }
 
-            const other_key_bytes = other_key.key_bytes;
+            const other_key_bytes = other_key.Ed25519.key_bytes;
             if (other_key_bytes.len != key_len) {
                 return error.WrongLen;
             }
@@ -317,11 +319,11 @@ pub const ED25519KeyPair = struct {
         }
 
         fn initFromKey(k: Key) !PublicKey {
-            if (k.key_type != .Ed25519) {
+            if (k != .Ed25519) {
                 return error.WrongKeyType;
             }
 
-            return try initFromRaw(k.key_bytes);
+            return try initFromRaw(k.Ed25519.key_bytes[0..]);
         }
 
         fn deinit(self: @This()) void {
@@ -438,23 +440,27 @@ pub const ED25519KeyPair = struct {
     }
 };
 
-pub const Key = struct {
-    key_type: KeyType,
-    key_bytes: []u8,
+const KeyType = enum(u8) {
+    RSA = 0,
+    Ed25519 = 1,
+    Secp256k1 = 2,
+    ECDSA = 3,
+};
 
-    const KeyType = enum(u8) {
-        RSA = 0,
-        Ed25519 = 1,
-        Secp256k1 = 2,
-        ECDSA = 3,
-    };
+pub const Key = union(KeyType) {
+    RSA: struct {},
+    Ed25519: struct {
+        key_bytes: [ED25519KeyPair.key_len]u8,
+    },
+    Secp256k1: struct {},
+    ECDSA: struct {},
 
     fn deinit(self: Key, allocator: Allocator) void {
         allocator.free(self.key_bytes);
     }
 
     fn toPeerIDString(self: Key, allocator: Allocator) ![]u8 {
-        switch (self.key_type) {
+        switch (self) {
             .Ed25519 => {
                 var pub_key = try ED25519KeyPair.PublicKey.initFromKey(self);
                 defer pub_key.deinit();
@@ -470,7 +476,7 @@ pub const Key = struct {
     }
 
     fn matchesPeerIDStr(self: Key, peer_id_str: []u8) !bool {
-        switch (self.key_type) {
+        switch (self) {
             .Ed25519 => {
                 var pub_key = try ED25519KeyPair.PublicKey.initFromKey(self);
                 defer pub_key.deinit();
@@ -502,18 +508,24 @@ pub const Key = struct {
     fn serializePb(self: Key, out: *std.ArrayList(u8)) !void {
         // Key type
         try protobuf.append_varint(out, pbFieldKey(1, 0), .Simple);
-        try protobuf.append_varint(out, self.key_type, .Simple);
+        try protobuf.append_varint(out, @enumToInt(self), .Simple);
 
         // Key Bytes
         try protobuf.append_varint(out, pbFieldKey(2, 2), .Simple);
-        try protobuf.append_varint(out, self.key_bytes.len, .Simple);
-
-        try out.appendSlice(self.key_bytes);
+        switch (self) {
+            .Ed25519 => {
+                try protobuf.append_varint(out, self.Ed25519.key_bytes.len, .Simple);
+                try out.appendSlice(self.Ed25519.key_bytes[0..]);
+            },
+            else => {
+                return error.UnsupportedKeyType;
+            },
+        }
     }
 
     const PbField = union(enum) { u8: u8, bytes: []const u8 };
 
-    fn deserializePb(allocator: Allocator, buffer: []const u8) !Key {
+    fn deserializePb(buffer: []const u8) !Key {
         // https://developers.google.com/protocol-buffers/docs/encoding
         var key_type: ?KeyType = undefined;
         var key_bytes: ?[]const u8 = undefined;
@@ -558,9 +570,17 @@ pub const Key = struct {
             return error.PBMissingFields;
         }
 
-        const k = Key{ .key_type = key_type.?, .key_bytes = try allocator.alloc(u8, key_bytes.?.len) };
-        std.mem.copy(u8, k.key_bytes, key_bytes.?);
+        // const k = Key{ .key_type = key_type.?, .key_bytes = try allocator.alloc(u8, key_bytes.?.len) };
+        if (key_type != KeyType.Ed25519) {
+            return error.UnsupportedKeyType;
+        }
 
+        var k: Key = Key{ .Ed25519 = .{ .key_bytes = [_]u8{0} ** ED25519KeyPair.key_len } };
+        if (key_bytes.?.len < ED25519KeyPair.key_len) {
+            return error.InvalidKeyLength;
+        }
+
+        std.mem.copy(u8, k.Ed25519.key_bytes[0..], key_bytes.?[0..ED25519KeyPair.key_len]);
         return k;
     }
 };
@@ -680,14 +700,14 @@ pub const Libp2pTLSCert = struct {
         };
     }
 
-    pub fn verify(allocator: Allocator, x509: X509) !Key {
+    pub fn verify(x509: X509) !Key {
         const libp2p_extension = try x509.getExtensionData(libp2p_extension_oid);
         const libp2p_decoded_again = try deserializeLibp2pExt(libp2p_extension);
 
         const cert_key = try x509.getPubKey();
         defer cert_key.deinit();
 
-        var k = try Key.deserializePb(allocator, libp2p_decoded_again.host_pubkey_bytes);
+        var k = try Key.deserializePb(libp2p_decoded_again.host_pubkey_bytes);
 
         // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
         var host_pub_key = try ED25519KeyPair.PublicKey.initFromKey(k);
@@ -725,8 +745,8 @@ test "Deserialize Public Key proto" {
     const allocator = std.testing.allocator;
 
     var example_pub_key_bytes = [_]u8{ 8, 1, 18, 32, 63, 233, 39, 184, 35, 221, 125, 215, 150, 255, 5, 46, 49, 208, 166, 231, 54, 202, 240, 87, 100, 229, 236, 194, 171, 133, 136, 243, 7, 192, 97, 121 };
-    const example_pub_key = try Key.deserializePb(allocator, example_pub_key_bytes[0..]);
-    defer example_pub_key.deinit(allocator);
+    const example_pub_key = try Key.deserializePb(example_pub_key_bytes[0..]);
+    // defer example_pub_key.deinit(allocator);
 
     var round_trip = std.ArrayList(u8).init(allocator);
     defer round_trip.deinit();
@@ -782,8 +802,8 @@ test "make cert" {
     // Verification part
 
     const allocator = std.testing.allocator;
-    const k = try Libp2pTLSCert.verify(allocator, x509);
-    defer k.deinit(allocator);
+    const k = try Libp2pTLSCert.verify(x509);
+    // defer k.deinit(allocator);
 
     var expected_peer_id = try ED25519KeyPair.PublicKey.toPeerIDString(.{ .key = host_key.key });
     var expected_peer_id_slice: []u8 = expected_peer_id[0..];
@@ -791,7 +811,7 @@ test "make cert" {
     defer allocator.free(actual_peer_id);
 
     // Various ways to check that the key is correct
-    try std.testing.expect(try ED25519KeyPair.PublicKer.PublicKey.matchesKey(.{ .key = host_key.key }, k));
+    try std.testing.expect(try ED25519KeyPair.PublicKey.matchesKey(.{ .key = host_key.key }, k));
     try std.testing.expect(try k.matchesPeerIDStr(expected_peer_id_slice));
     try std.testing.expect(try ED25519KeyPair.PublicKey.matchesPeerIDStr(.{ .key = host_key.key }, actual_peer_id));
     try std.testing.expectEqualStrings(expected_peer_id_slice, actual_peer_id);
