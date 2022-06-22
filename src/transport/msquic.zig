@@ -61,7 +61,7 @@ const alpn = MsQuic.QUIC_BUFFER{
     .Buffer = @ptrCast([*c]u8, libp2p_proto_name[0..]),
 };
 
-const MsQuicTransport = struct {
+pub const MsQuicTransport = struct {
     const Self = @This();
     const CredentialConfigHelper = struct {
         cred_config: MsQuic.QUIC_CREDENTIAL_CONFIG,
@@ -204,7 +204,7 @@ const MsQuicTransport = struct {
                     var stream = self.transport.stream_system.handle_allocator.getPtr(handle) catch {
                         unreachable;
                     };
-                    stream.* = Stream.init(self.transport.allocator, true);
+                    stream.* = Stream.init(self.transport.allocator, self.transport, true);
 
                     var stream_context = self.transport.allocator.create(Stream.StreamContext) catch {
                         std.debug.print("Failed to allocate stream context. dropping\n", .{});
@@ -322,7 +322,7 @@ const MsQuicTransport = struct {
         fn newStream(self: *Connection, transport: *MsQuicTransport) !StreamSystem.Handle {
             const stream_handle = try transport.stream_system.handle_allocator.allocSlot();
             const stream = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-            stream.* = Stream.init(transport.allocator, false);
+            stream.* = Stream.init(transport.allocator, transport, false);
 
             var context = try transport.allocator.create(Stream.StreamContext);
             context.* = Stream.StreamContext{ .handle = stream_handle, .transport = transport, .accept_lock = null };
@@ -352,7 +352,8 @@ const MsQuicTransport = struct {
         }
     };
 
-    const Stream = struct {
+    pub const Stream = struct {
+        transport: *MsQuicTransport,
         msquic_stream_handle: MsQuic.HQUIC,
         is_inbound: bool,
         // TODO initialize this with one
@@ -368,6 +369,9 @@ const MsQuicTransport = struct {
             closed: bool = false,
             recv_deferred: bool = false,
         },
+
+        pub const Writer = std.io.Writer(*Stream, SendErrors, send);
+        pub const Reader = std.io.Reader(*Stream, SendErrors, recv);
 
         const RecvFrameQ = std.atomic.Queue(struct {
             frame: anyframe,
@@ -421,6 +425,7 @@ const MsQuicTransport = struct {
             }
 
             fn release(self: *LeasedBuffer, transport: *MsQuicTransport, stream: *Stream) void {
+                // TODO remove transport param
                 const prev_state = self.atomicStateUpdate(LeasedBufferState{
                     .active_lease = false,
                     .msquic_pending = true,
@@ -454,8 +459,9 @@ const MsQuicTransport = struct {
             }
         };
 
-        fn init(allocator: Allocator, is_inbound: bool) Stream {
+        fn init(allocator: Allocator, transport: *MsQuicTransport, is_inbound: bool) Stream {
             var self = Stream{
+                .transport = transport,
                 .state = .{},
                 .state_mutex = std.Thread.Mutex{},
                 .msquic_stream_handle = undefined,
@@ -520,15 +526,20 @@ const MsQuicTransport = struct {
             }
         }
 
-        fn send(self: *Stream, transport: *MsQuicTransport, buf: []u8) !void {
+        const SendErrors = error{StreamSendFailed};
+
+        fn send(self: *Stream, buf: []const u8) SendErrors!usize {
             std.debug.print("Send: Stream handle:{*}\n", .{self.msquic_stream_handle});
             var lock = std.event.Lock.initLocked();
 
+            // Hack to keep buf as const! (unsafe)
+            var buf_ptr = @ptrToInt(buf.ptr);
+
             const quic_buf = MsQuic.QUIC_BUFFER{
-                .Buffer = buf.ptr,
+                .Buffer = buf_ptr,
                 .Length = @intCast(u32, buf.len),
             };
-            const status = transport.msquic.getQuicAPI().StreamSend.?(
+            const status = self.transport.msquic.getQuicAPI().StreamSend.?(
                 self.msquic_stream_handle,
                 &quic_buf,
                 1,
@@ -540,14 +551,16 @@ const MsQuicTransport = struct {
 
             if (MsQuic.QuicStatus.isError(status)) {
                 std.debug.print("Stream send failed: {x}\n", .{status});
-                return error.streamSendFailed;
+                return SendErrors.StreamSendFailed;
             }
 
             const held = lock.acquire();
             held.release();
+
+            return buf.len;
         }
 
-        fn recvWithLease(self: *Stream, transport: *MsQuicTransport) !*LeasedBuffer {
+        fn recvWithLease(self: *Stream) !*LeasedBuffer {
             {
                 self.state_mutex.lock();
                 defer self.state_mutex.unlock();
@@ -569,7 +582,7 @@ const MsQuicTransport = struct {
                 if (was_deferred) {
                     // We deferred a receive in the past, so tell msquic we are ready to recv
                     std.debug.print("Had to enable recv\n", .{});
-                    _ = transport.msquic.getQuicAPI().StreamReceiveSetEnabled.?(self.msquic_stream_handle, @as(u8, @boolToInt(true)));
+                    _ = self.transport.msquic.getQuicAPI().StreamReceiveSetEnabled.?(self.msquic_stream_handle, @as(u8, @boolToInt(true)));
                 }
 
                 suspend {}
@@ -581,6 +594,30 @@ const MsQuicTransport = struct {
             } else {
                 @panic("TODO implement. caller should allocate instead (maybe");
             }
+        }
+
+        const ReadError = error{ StreamReadFailed, StreamClosed };
+
+        /// Classic recv function. Not as fast as recvWithLease since it copies
+        /// to the buffer. Prefer recvWithLease if perf is important.
+        fn recv(self: *Stream, buffer: []u8) ReadError!usize {
+            var bytes_read: usize = buffer.len;
+            {
+                const leased_buf = try self.recvWithLease();
+                defer leased_buf.release(self.transport, self);
+
+                if (leased_buf.len > buffer.len) {
+                    // trim the leased buffer if we aren't reading the whole thing
+                    leased_buf.len = buffer.len;
+                } else if (leased_buf.len < buffer.len) {
+                    bytes_read = leased_buf.len;
+                    return ReadError.StreamClosed;
+                }
+
+                std.mem.copy(u8, buffer, leased_buf.buf);
+            }
+
+            return bytes_read;
         }
 
         const StreamContext = struct {
@@ -658,7 +695,7 @@ const MsQuicTransport = struct {
                                 // Return this node to our buffer queue.
                                 // TODO this should happen in the recvWithLease
 
-                                const buf = event.*.unnamed_0.RECEIVE.Buffers[i];
+                                var buf = event.*.unnamed_0.RECEIVE.Buffers[i];
                                 const slice = buf.Buffer[0..buf.Length];
                                 recv_frame.data.leased_buf = LeasedBuffer{ .buf = slice, .state = .{ .active_lease = true } };
                                 resume recv_frame.data.frame;
@@ -680,14 +717,8 @@ const MsQuicTransport = struct {
 
                                     return @bitCast(c_uint, @as(c_int, MsQuic.QuicStatus.Pending));
                                 } else {
-
+                                    const bytes_consumed = recv_frame.data.leased_buf.buf.len;
                                     // We were active, so we need to return the buffer to the pool.
-                                    // if (@atomicLoad(bool, &state.active_lease, .SeqCst) != false) {
-                                    //     // @panic("Caller did not return leased buffer synchronously");
-                                    //     // TODO support this case?
-
-                                    //     @atomicStore(bool, &self.state.msquic_pending, true, .SeqCst);
-                                    // }
 
                                     _ = recv_frame.data.leased_buf.atomicStateUpdate(LeasedBuffer.LeasedBufferState{
                                         .active_lease = false,
@@ -698,7 +729,18 @@ const MsQuicTransport = struct {
                                     recv_frame.data.frame = undefined;
                                     stream_ptr.recv_frame_buffer.put(recv_frame);
 
-                                    consumed_bytes += buf.Length;
+                                    if (bytes_consumed < buf.Length) {
+                                        // Didn't read the whole thing.
+                                        consumed_bytes += bytes_consumed;
+                                        // Move up our buffer slice
+                                        buf.Buffer += bytes_consumed;
+                                        buf.Length -= @intCast(u32, bytes_consumed);
+
+                                        // Go back one, so we process this buf again with the next receive.
+                                        i -= 1;
+                                    } else {
+                                        consumed_bytes += buf.Length;
+                                    }
                                 }
                                 // TODO return 0 read and wait
                             } else {
@@ -896,53 +938,6 @@ const MsQuicTransport = struct {
             return status;
         }
 
-        fn streamCallback(stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) c_uint {
-            const self: *Listener = @ptrCast(*Self, @alignCast(@alignOf(Listener), self_ptr));
-            switch (event.*.Type) {
-                MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
-                    // A previous StreamSend call has completed, and the context is being
-                    // returned back to the app.
-                    std.debug.print("strm={any} data sent\n", .{stream});
-                    // if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |client_context| {
-                    // const T = SendBuffer(send_buffer_size);
-                    // const send_buffer = @ptrCast(*T, @alignCast(@alignOf(T), client_context));
-                    // send_buffer.deinit(self.allocator);
-                    // }
-                },
-                MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
-                    // Data was received from the peer on the stream.
-                    std.debug.print("strm={any} data received\n", .{stream});
-                    const limit = event.*.unnamed_0.RECEIVE.BufferCount;
-                    var i: usize = 0;
-                    while (i < limit) : (i += 1) {
-                        const buf = event.*.unnamed_0.RECEIVE.Buffers[i];
-                        const slice = buf.Buffer[0..buf.Length];
-                        std.debug.print("strm={any} data: {s}\n", .{ stream, slice });
-                    }
-                },
-                MsQuic.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => {
-                    // The peer gracefully shut down its send direction of the stream.
-                    std.debug.print("strm={any} peer shutdown send direction\n", .{stream});
-                    self.serverSend(self.allocator, stream) catch |err| {
-                        std.debug.print("strm={any} err={any} sending data\n", .{ stream, err });
-                        _ = self.msquic.StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
-                        return 0;
-                    };
-                },
-                MsQuic.QUIC_STREAM_EVENT_PEER_SEND_ABORTED => {
-                    // The peer aborted its send direction of the stream.
-                    std.debug.print("strm={any} peer aborted\n", .{stream});
-                    _ = self.msquic.getQuicAPI().StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
-                },
-                MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
-                    std.debug.print("strm={any} all done\n", .{stream});
-                    self.msquic.getQuicAPI().StreamClose.?(stream);
-                },
-                else => {},
-            }
-            return 0;
-        }
-
         // Accept a connection
         pub fn accept(self: *Listener) !ConnectionSystem.Handle {
             std.debug.print("\nSelf in accept is {*}\n", .{self});
@@ -970,8 +965,9 @@ const MsQuicTransport = struct {
     };
 
     // A handle instead of a pointer for the connection. Different than MsQuic.hquic
-    const ConnectionSystem = struct {
-        const Handle = HandleAllocator(Connection).Handle;
+
+    pub const ConnectionSystem = struct {
+        pub const Handle = HandleAllocator(Connection).Handle;
         handle_allocator: HandleAllocator(Connection),
 
         fn init(allocator: Allocator) ConnectionSystem {
@@ -987,8 +983,8 @@ const MsQuicTransport = struct {
         // fn acceptStream(self: *ConnectionSystem, handle: Handle) StreamSystem.Handle {}
     };
 
-    const StreamSystem = struct {
-        const Handle = HandleAllocator(Stream).Handle;
+    pub const StreamSystem = struct {
+        pub const Handle = HandleAllocator(Stream).Handle;
         handle_allocator: HandleAllocator(Stream),
 
         fn init(allocator: Allocator) StreamSystem {
@@ -1002,8 +998,8 @@ const MsQuicTransport = struct {
         }
     };
 
-    const ListenerSystem = struct {
-        const Handle = HandleAllocator(Listener).Handle;
+    pub const ListenerSystem = struct {
+        pub const Handle = HandleAllocator(Listener).Handle;
         handle_allocator: HandleAllocator(Listener),
 
         fn init(allocator: Allocator) ListenerSystem {
@@ -1025,10 +1021,10 @@ const MsQuicTransport = struct {
     connection_system: ConnectionSystem,
     stream_system: StreamSystem,
 
-    const Options = struct {
+    pub const Options = struct {
         cred_flags: MsQuic.QUIC_CREDENTIAL_FLAGS = 0,
 
-        fn default() Options {
+        pub fn default() Options {
             return Options{
                 // We do the cert validation ourselves with https://github.com/libp2p/specs/blob/master/tls/tls.md
                 .cred_flags = MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION,
@@ -1143,14 +1139,14 @@ const MsQuicTransport = struct {
     }
 
     pub fn startConnection(self: *Self, allocator: Allocator, target: []const u8, port: u16) callconv(.Async) !ConnectionSystem.Handle {
-        // TODO resove DNS names
+        // TODO resolve DNS names
 
         var conn_context_ptr = try allocator.create(ConnectionContext);
 
         const conn_handle = try self.connection_system.handle_allocator.allocSlot();
         const conn_ptr = try self.connection_system.handle_allocator.getPtr(conn_handle);
         conn_ptr.* = try Connection.init(false);
-        conn_ptr.*.peer_address = try std.net.Address.parseIp(target, port);
+        conn_ptr.*.peer_address = try std.net.Address.resolveIp(target, port);
 
         conn_context_ptr.* = ConnectionContext{
             .connection_handle = conn_handle,
@@ -1225,7 +1221,7 @@ test "Spin up transport" {
         var stream = try transport.stream_system.handle_allocator.getPtr(stream_handle);
         std.debug.print("\nSending data\n", .{});
         var data = "Hello World".*;
-        try await async stream.send(&transport, data[0..]);
+        _ = try await async stream.send(data[0..]);
         std.debug.print("\nSent data\n", .{});
         const f = struct {
             fn f(stream_handle_1: MsQuicTransport.StreamSystem.Handle, closure_transport: *MsQuicTransport, conn_handle_1: MsQuicTransport.ConnectionSystem.Handle) !void {
@@ -1243,7 +1239,7 @@ test "Spin up transport" {
                 while (true) : (count += 1) {
                     std.debug.print("\nRead loop\n", .{});
 
-                    const leased_buf = try await async closure_stream.recvWithLease(closure_transport);
+                    const leased_buf = try await async closure_stream.recvWithLease();
                     std.debug.print("\nRead data {s}\n", .{leased_buf.buf});
                     if (count % 4 == 0) {
                         // To test what happens if we suspend with a leased buffer
@@ -1269,14 +1265,14 @@ test "Spin up transport" {
     std.debug.print("\nincoming stream {}\n", .{incoming_stream});
 
     const incoming_stream_ptr = try transport.stream_system.handle_allocator.getPtr(incoming_stream);
-    const leased_buf = try incoming_stream_ptr.recvWithLease(&transport);
+    const leased_buf = try incoming_stream_ptr.recvWithLease();
     std.debug.print("\nRead server data {s}\n", .{leased_buf.buf});
     leased_buf.releaseAndWaitForNextTick(&transport, incoming_stream_ptr);
 
     var msgs_to_send: usize = 2;
     while (msgs_to_send > 0) : (msgs_to_send -= 1) {
         var msg_bytes = try std.fmt.allocPrint(allocator, "Hello from server. Countdown: {}\n", .{msgs_to_send});
-        try await async incoming_stream_ptr.send(&transport, msg_bytes);
+        _ = try await async incoming_stream_ptr.send(msg_bytes);
         allocator.free(msg_bytes);
     }
 }

@@ -75,6 +75,8 @@ pub const PKCS12 = struct {
 
 pub const X509 = struct {
     inner: *c.X509,
+    libp2p_extension: ?*c.X509_EXTENSION = null,
+
     pub fn init(kp: ED25519KeyPair) !X509 {
         //TODO accept more parameters
 
@@ -126,6 +128,10 @@ pub const X509 = struct {
 
     pub fn deinit(self: X509) void {
         c.X509_free(self.inner);
+        if (self.libp2p_extension != null) {
+            std.debug.print("\n\nHERE!\n\n", .{});
+            c.X509_EXTENSION_free(self.libp2p_extension);
+        }
     }
 
     pub fn initFromDer(buffer: []u8) !X509 {
@@ -167,6 +173,32 @@ pub const X509 = struct {
         }
 
         return ED25519KeyPair.PublicKey{ .key = inner_key.? };
+    }
+
+    pub fn insertLibp2pExtension(self: *X509, extension_data: []const u8) !void {
+        var os = c.ASN1_OCTET_STRING_new();
+        defer c.ASN1_OCTET_STRING_free(os);
+        if (c.ASN1_OCTET_STRING_set(os, extension_data.ptr, @intCast(c_int, @intCast(u32, extension_data.len))) == 0) {
+            return error.ASN1_OCTET_STRING_set_failed;
+        }
+
+        var obj = c.OBJ_txt2obj(libp2p_extension_oid, 1);
+        defer c.ASN1_OBJECT_free(obj);
+
+        var ex = c.X509_EXTENSION_create_by_OBJ(null, obj, 0, os);
+        if (ex == null) {
+            @panic("Failed to create extension");
+        }
+
+        if (self.libp2p_extension != null) {
+            @panic("Already have a libp2p extension!");
+        }
+
+        if (c.X509_add_ext(self.inner, ex, -1) != 1) {
+            return error.X509_add_ext_failed;
+        }
+
+        self.libp2p_extension = ex;
     }
 
     // fn makeLibp2pExtension(self: X509) ![]u8 {
@@ -601,25 +633,7 @@ pub const Libp2pTLSCert = struct {
     const extension_byte_size = tag_size + length_size + tag_size + length_size + ED25519KeyPair.PublicKey.pb_encoded_len + tag_size + length_size + ED25519KeyPair.Signature.Len;
 
     pub fn insertExtension(x509: *X509, serialized_libp2p_extension: [extension_byte_size]u8) !void {
-        var os = c.ASN1_OCTET_STRING_new();
-        defer c.ASN1_OCTET_STRING_free(os);
-        if (c.ASN1_OCTET_STRING_set(os, &serialized_libp2p_extension, serialized_libp2p_extension.len) == 0) {
-            return error.ASN1_OCTET_STRING_set_failed;
-        }
-
-        _ = x509;
-
-        var obj = c.OBJ_txt2obj(libp2p_extension_oid, 1);
-        defer c.ASN1_OBJECT_free(obj);
-
-        var ex = c.X509_EXTENSION_create_by_OBJ(null, obj, 0, os);
-        if (ex == null) {
-            @panic("Failed to create extension");
-        }
-        defer c.X509_EXTENSION_free(ex);
-        if (c.X509_add_ext(x509.inner, ex, -1) != 1) {
-            return error.X509_add_ext_failed;
-        }
+        try x509.insertLibp2pExtension(serialized_libp2p_extension[0..]);
     }
 
     pub fn serializeLibp2pExt(self: @This()) ![extension_byte_size]u8 {

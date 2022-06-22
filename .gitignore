@@ -4,3 +4,6 @@ zig-out
 result
 # Locally testing
 msquic2
+
+# Ignoring for now
+pb

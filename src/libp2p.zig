@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const MsQuicTransport = @import("./transports/msquic.zig");
+const MsQuicTransport = @import("./transport/msquic.zig");
 
 // TODO we should dynamically resize the connections array below. For now allocate at once.
 const MAX_CONNS = 1024;
@@ -68,9 +68,10 @@ const PeerSystem = struct {
 pub const libp2p = struct {};
 
 test {
-    _ = @import("./transports/msquic.zig");
+    _ = @import("./transport/msquic.zig");
     _ = @import("./crypto/openssl.zig");
     _ = @import("./crypto.zig");
+    _ = @import("./multistream_select.zig");
     std.testing.refAllDecls(@This());
 }
 

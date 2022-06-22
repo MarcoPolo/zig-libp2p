@@ -24,7 +24,16 @@ fn append_raw_varint(pb: *ArrayList(u8), value: u64) !void {
     try pb.append(@intCast(u8, copy & 0x7F));
 }
 
-/// Appends a varint to the pb array. 
+pub fn append_raw_varint_to_writer(dest: std.io.Writer, value: u64) !void {
+    var copy = value;
+    while (copy > 0x7F) {
+        try dest.writeByte(0x80 + @intCast(u8, copy & 0x7F));
+        copy = copy >> 7;
+    }
+    try dest.writeByte(@intCast(u8, copy & 0x7F));
+}
+
+/// Appends a varint to the pb array.
 /// Mostly does the required transformations to use append_raw_varint
 /// after making the value some kind of unsigned value.
 fn append_as_varint(pb: *ArrayList(u8), value: anytype, comptime varint_type: VarintType) !void {
