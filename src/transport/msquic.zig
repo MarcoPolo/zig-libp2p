@@ -238,7 +238,7 @@ pub const MsQuicTransport = struct {
                     // TODO drop streams if too many.
                     conn_ptr.ready_streams.put(stream_queue_node);
                     if (conn_ptr.pending_accepts.get()) |pending_accept| {
-                        Lock.Held.release(Lock.Held{ .lock = pending_accept.data });
+                        resume (pending_accept.data);
                     }
                 },
                 else => {
@@ -273,7 +273,7 @@ pub const MsQuicTransport = struct {
 
         const Fut = std.event.Future(void);
         const StreamQueue = std.atomic.Queue(StreamSystem.Handle);
-        const PendingStreamAcceptQueue = std.atomic.Queue(*std.event.Lock);
+        const PendingStreamAcceptQueue = std.atomic.Queue(anyframe);
 
         fn init(is_inbound: bool) !Connection {
             var self = Connection{
@@ -299,16 +299,17 @@ pub const MsQuicTransport = struct {
                 allocator.destroy(node);
             }
             while (pending_accepts.get()) |node| {
-                Lock.Held.release(Lock.Held{ .lock = node.data });
+                resume node.data;
             }
         }
 
         pub fn acceptStream(self: *Connection, allocator: Allocator) !StreamSystem.Handle {
-            var lock = std.event.Lock{};
             var pending_node = try allocator.create(PendingStreamAcceptQueue.Node);
-            defer allocator.destroy(pending_node);
+            defer {
+                allocator.destroy(pending_node);
+            }
             pending_node.* = PendingStreamAcceptQueue.Node{
-                .data = &lock,
+                .data = @frame(),
             };
 
             while (true) {
@@ -318,12 +319,9 @@ pub const MsQuicTransport = struct {
                     return handle;
                 }
 
-                _ = lock.acquire();
-                self.pending_accepts.put(pending_node);
-
-                // TODO use a frame here.
-                const held = lock.acquire();
-                held.release();
+                suspend {
+                    self.pending_accepts.put(pending_node);
+                }
 
                 if (self.state == .Closed or self.state == .Closing) {
                     return error.ConnectionClosed;
@@ -838,6 +836,11 @@ pub const MsQuicTransport = struct {
         ready_connection_queue: ConnQueue,
         pending_accepts: std.atomic.Queue(anyframe),
         allocator: Allocator,
+        state: enum {
+            Active,
+            Closing,
+            Closed,
+        } = .Active,
 
         const ConnQueue = std.atomic.Queue(ConnectionContext);
 
@@ -899,6 +902,7 @@ pub const MsQuicTransport = struct {
         }
 
         pub fn deinit(self: *Listener) void {
+            self.state = .Closing;
             defer self.transport.msquic.getQuicAPI().ListenerClose.?(self.listener_handle);
             while (self.connection_queue.get()) |conn| {
                 self.transport.connection_system.handle_allocator.freeSlot(conn.data.connection_handle) catch {
@@ -911,6 +915,10 @@ pub const MsQuicTransport = struct {
                     @panic("Tried to free stale handle");
                 };
                 self.allocator.destroy(conn);
+            }
+
+            while (self.pending_accepts.get()) |frame_node| {
+                resume frame_node.data;
             }
         }
 
@@ -1008,6 +1016,10 @@ pub const MsQuicTransport = struct {
                 suspend {
                     self.pending_accepts.put(&frame_node);
                 }
+
+                if (self.state == .Closed or self.state == .Closing) {
+                    return error.ListenerClosed;
+                }
             }
         }
     };
@@ -1027,8 +1039,6 @@ pub const MsQuicTransport = struct {
         fn deinit(self: ConnectionSystem) void {
             self.handle_allocator.deinit();
         }
-
-        // fn acceptStream(self: *ConnectionSystem, handle: Handle) StreamSystem.Handle {}
     };
 
     pub const StreamSystem = struct {

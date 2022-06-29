@@ -137,8 +137,7 @@ pub const Libp2p = struct {
             const gen = struct {
                 pub fn f(pointer: *anyopaque, stream: StreamHandle) void {
                     const self_ptr = @ptrCast(Context, @alignCast(alignment, pointer));
-                    // return @call(.{ .modifier = .always_inline }, handler, .{ self_ptr, stream });
-                    return handler(self_ptr, stream);
+                    return @call(.{ .modifier = .always_inline }, handler, .{ self_ptr, stream });
                 }
             };
             var handlerWrapped = IncomingStreamHandler{
@@ -180,8 +179,11 @@ pub const Libp2p = struct {
         }
 
         fn acceptConnLoop(self: Listener, allocator: Allocator) !void {
-            // I think this is right? TODO think more about this
-            defer allocator.destroy(@frame());
+            defer {
+                suspend {
+                    allocator.destroy(@frame());
+                }
+            }
 
             while (true) {
                 const listener_ptr = try self.transport.listener_system.handle_allocator.getPtr(self.h);
@@ -194,19 +196,24 @@ pub const Libp2p = struct {
                 // Store the frame on the heap
                 var acceptStreamFrame = try allocator.create(@Frame(acceptStreamLoop));
                 acceptStreamFrame.* = async self.acceptStreamLoop(allocator, incoming_conn);
+                std.debug.print("\n\n f is at {*}\n\n", .{acceptStreamFrame});
             }
         }
 
         fn acceptStreamLoop(self: Listener, allocator: Allocator, conn: MsQuicTransport.ConnectionSystem.Handle) !void {
             // Start this loop on the next tick from the event loop rather than rely on the caller to drive this forward.
+            std.debug.print("\n\n f2 is at {anyframe}\n\n", .{@frame()});
 
-            // I think this is right? TODO think more about this
-            defer allocator.destroy(@frame());
-
-            var tick_node = Loop.NextTickNode{ .prev = undefined, .next = undefined, .data = @frame() };
-            suspend {
-                global_event_loop.onNextTick(&tick_node);
+            defer {
+                suspend {
+                    allocator.destroy(@frame());
+                }
             }
+
+            // var tick_node = Loop.NextTickNode{ .prev = undefined, .next = undefined, .data = @frame() };
+            // suspend {
+            //     global_event_loop.onNextTick(&tick_node);
+            // }
 
             while (true) {
                 const conn_ptr = try self.transport.connection_system.handle_allocator.getPtr(conn);
@@ -250,8 +257,7 @@ pub const Libp2p = struct {
                     var conn_ptr = self.transport.connection_system.handle_allocator.getPtr(conn) catch {
                         continue;
                     };
-                    // conn_ptr.deinit(self.active_conns.allocator, self.transport);
-                    _ = conn_ptr;
+                    conn_ptr.deinit(self.active_conns.allocator, self.transport);
                 }
                 conn_list.value_ptr.deinit();
             }
@@ -265,9 +271,7 @@ pub const Libp2p = struct {
             self.active_listeners.deinit();
         }
 
-        std.debug.print("\n\n!!!!! here!!!\n\n", .{});
         self.incoming_handlers.deinit();
-        std.debug.print("\n\n!!!!! done here!!!\n\n", .{});
     }
 
     fn negotiateOutboundStream(self: *Libp2p, stream_handle: StreamHandle, protocol_id: []const u8) !void {
@@ -399,23 +403,6 @@ test "new outbound stream" {
     // Setup a listener
     const TestListener = struct {
         fn run(l_transport: *MsQuicTransport) !void {
-            // var listener = try l_transport.listen(allocator, try std.net.Address.parseIp4("0.0.0.0", 54321));
-            // defer MsQuicTransport.Listener.deinitHandle(listener, l_transport);
-
-            // const listener_ptr = try l_transport.listener_system.handle_allocator.getPtr(listener);
-            // var incoming_conn = try listener_ptr.accept();
-            // var incoming_conn_ptr = try l_transport.connection_system.handle_allocator.getPtr(incoming_conn);
-            // defer incoming_conn_ptr.deinit(allocator);
-            // std.debug.print("\nincoming connection {}\n", .{incoming_conn});
-
-            // const incoming_stream = try incoming_conn_ptr.acceptStream(allocator);
-            // std.debug.print("\nincoming stream {}\n", .{incoming_stream});
-            // var incoming_stream_ptr = try l_transport.stream_system.handle_allocator.getPtr(incoming_stream);
-
-            // var leasedBuf = try incoming_stream_ptr.recvWithLease();
-            // std.debug.print("Got {s} on the other side \n\n", .{leasedBuf.buf});
-            // leasedBuf.releaseAndWaitForNextTick(l_transport, incoming_stream_ptr);
-
             var libp2p_2 = try Libp2p.initWithTransport(allocator, l_transport);
             defer libp2p_2.deinit();
 
@@ -423,28 +410,44 @@ test "new outbound stream" {
             std.debug.print("debug: Registered handler\n", .{});
 
             try libp2p_2.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
-            std.time.sleep(5 * std.time.ns_per_s);
+            std.time.sleep(3 * std.time.ns_per_s);
 
             std.debug.print("debug: done listening\n", .{});
         }
 
-        fn handleHello(l_transport: *MsQuicTransport, stream: StreamHandle) void {
-            _ = l_transport;
-            _ = stream;
-            std.debug.print("\n\nIn hello handler\n\n", .{});
+        fn handleHelloAsync(l_transport: *MsQuicTransport, stream: StreamHandle) void {
+            std.debug.print("\n\nIn hello handler async\n\n", .{});
+            defer {
+                suspend {
+                    l_transport.allocator.destroy(@frame());
+                }
+            }
 
             var incoming_stream_ptr = l_transport.stream_system.handle_allocator.getPtr(stream) catch {
                 @panic("todo fixme");
             };
+
+            var leasedBuf = incoming_stream_ptr.recvWithLease() catch {
+                @panic("todo fixme");
+            };
+            std.debug.print("Got {s} on the other side \n\n", .{leasedBuf.buf});
+            leasedBuf.releaseAndWaitForNextTick(l_transport, incoming_stream_ptr);
+
             incoming_stream_ptr.*.shutdownNow() catch {
                 std.debug.print("FAILED TO SHUTDOWN\n\n", .{});
             };
+        }
 
-            // var leasedBuf = incoming_stream_ptr.recvWithLease() catch {
-            //     @panic("todo fixme");
-            // };
-            // std.debug.print("Got {s} on the other side \n\n", .{leasedBuf.buf});
-            // leasedBuf.releaseAndWaitForNextTick(l_transport, incoming_stream_ptr);
+        fn handleHello(l_transport: *MsQuicTransport, stream: StreamHandle) void {
+            std.debug.print("\n\nIn hello handler\n\n", .{});
+
+            var frame = l_transport.allocator.create(@Frame(handleHelloAsync)) catch {
+                @panic("Failed to allocate");
+            };
+            frame.* = async handleHelloAsync(l_transport, stream);
+
+            _ = l_transport;
+            _ = stream;
         }
     };
 
@@ -452,23 +455,6 @@ test "new outbound stream" {
     _ = listener_frame;
 
     std.time.sleep(std.time.ns_per_s);
-
-    // start
-    // const connection = try await async transport.startConnection(allocator, "127.0.0.1", 54321);
-    // // TODO dealloc connection
-    // std.debug.print("\ngot connection {}\n", .{connection});
-    // {
-    //     var connection_ptr = try transport.connection_system.handle_allocator.getPtr(connection);
-    //     const stream_handle = try connection_ptr.newStream(&transport);
-    //     var stream = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-    //     std.debug.print("\ngot stream {*}\n", .{stream});
-    //     // std.debug.print("\nSending data\n", .{});
-    //     // var data = "Hello World".*;
-    //     // _ = try await async stream.send(data[0..]);
-    //     // std.debug.print("\nSent data\n", .{});
-    // }
-
-    // end
 
     var libp2p = try Libp2p.initWithTransport(allocator, &transport);
     defer libp2p.deinit();
