@@ -24,7 +24,7 @@ fn append_raw_varint(pb: *ArrayList(u8), value: u64) !void {
     try pb.append(@intCast(u8, copy & 0x7F));
 }
 
-pub fn append_raw_varint_to_writer(dest: std.io.Writer, value: u64) !void {
+pub fn append_raw_varint_to_writer(dest: anytype, value: u64) !void {
     var copy = value;
     while (copy > 0x7F) {
         try dest.writeByte(0x80 + @intCast(u8, copy & 0x7F));

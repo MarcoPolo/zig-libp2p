@@ -26,7 +26,8 @@ clangStdenv.mkDerivation rec {
 
   buildPhase = ''
     ls -lha .
-    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
+    # HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
+    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
   '';
 
   installPhase = ''

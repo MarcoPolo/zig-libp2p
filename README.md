@@ -11,6 +11,8 @@ Currently only works on macos with this patch: https://github.com/MarcoPolo/zig/
 1. Avoid thread contention.
 1. Minimize library code.
 1. Handlers may run on their own thread.
+1. Minimize buffering. If we can push data to a handler prefer that to buffering
+   the data for the handler in the future.
 
 ## What does the swarm _Actually_ do?
 

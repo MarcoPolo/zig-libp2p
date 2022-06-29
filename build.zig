@@ -100,8 +100,8 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
         },
     };
 
-    // Release and openssl are defaults here. Not sure if we get anything from supporting debug
-    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
+    // Debug to catch issues
+    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
 
     l.addLibPath(try std.fs.path.join(allocator, &.{
         msquic_dir,

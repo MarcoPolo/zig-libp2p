@@ -56,6 +56,13 @@ pub const PKCS12 = struct {
         if (bytes_written <= 0) {
             return error.PKCS12SerFailed;
         }
+
+        // Experimentation with zig's dead code removal.
+        // const bw = @intCast(usize, bytes_written);
+        // var cp = try std.testing.allocator.alloc(u8, bw);
+        // std.mem.copy(u8, cp, buffer[0..bw]);
+        // _ = try initFromDer(buffer);
+
         return @intCast(usize, len);
     }
 
@@ -129,7 +136,7 @@ pub const X509 = struct {
     pub fn deinit(self: X509) void {
         c.X509_free(self.inner);
         if (self.libp2p_extension != null) {
-            std.debug.print("\n\nHERE!\n\n", .{});
+            // Do I need to do this here? unclear
             c.X509_EXTENSION_free(self.libp2p_extension);
         }
     }
@@ -211,12 +218,23 @@ pub const ED25519KeyPair = struct {
 
     const key_len = 32;
 
-    const PublicKey = struct {
+    pub const PublicKey = struct {
         key: *c.EVP_PKEY,
 
         const DER_encoded_len = 44;
         const pb_encoded_len = key_len + 4;
         const libp2p_extension_len = DER_encoded_len + libp2p_tls_handshake_prefix.len;
+
+        pub fn toPeerID(self: @This()) !PeerID {
+            var peer = PeerID{ .Ed25519 = .{ .pub_key_bytes = [_]u8{0} ** key_len } };
+            var expected_len: usize = key_len;
+            // var pub_key_out_slice = out[4..];
+            if (c.EVP_PKEY_get_raw_public_key(self.key, &peer.Ed25519.pub_key_bytes, &expected_len) == 0) {
+                return error.GetPubKeyFailed;
+            }
+
+            return peer;
+        }
 
         fn derEncoding(self: @This()) [DER_encoded_len]u8 {
             var out = [_]u8{0} ** DER_encoded_len;
@@ -472,11 +490,18 @@ pub const ED25519KeyPair = struct {
     }
 };
 
-const KeyType = enum(u8) {
+pub const KeyType = enum(u8) {
     RSA = 0,
     Ed25519 = 1,
     Secp256k1 = 2,
     ECDSA = 3,
+};
+
+pub const PeerID = union(KeyType) {
+    RSA: struct { pub_key_hash: [32]u8 }, // sha256 hash
+    Ed25519: struct { pub_key_bytes: [ED25519KeyPair.key_len]u8 },
+    Secp256k1: struct { pub_key_bytes: [32]u8 },
+    ECDSA: struct { pub_key_bytes: [32]u8 },
 };
 
 pub const Key = union(KeyType) {
@@ -489,6 +514,17 @@ pub const Key = union(KeyType) {
 
     fn deinit(self: Key, allocator: Allocator) void {
         allocator.free(self.key_bytes);
+    }
+
+    pub fn toPeerID(self: Key) PeerID {
+        switch (self) {
+            .Ed25519 => {
+                return .{ .Ed25519 = .{ .pub_key_bytes = self.Ed25519.key_bytes } };
+            },
+            else => {
+                @panic("other key types not implemented");
+            },
+        }
     }
 
     fn toPeerIDString(self: Key, allocator: Allocator) ![]u8 {
