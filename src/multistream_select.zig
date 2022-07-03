@@ -98,6 +98,7 @@ pub const MultistreamSelect = struct {
 
     pub fn negotiateOutboundMultistreamSelect(writer: anytype, reader: anytype, application_protocol_id: []const u8) !void {
         for ([_][]const u8{ multistream_protocol_id[0..], application_protocol_id }) |proto_id| {
+            std.debug.print("!!sending {s}\n", .{proto_id});
             try delimWrite(writer, proto_id);
         }
 
@@ -105,6 +106,7 @@ pub const MultistreamSelect = struct {
             // Messsages here should never be over 128 bytes. We check that the msg_len is <0x7f. (127 + 1 for newline)
             var read_buf = [_]u8{0} ** 128;
             const msg_len = try reader.readByte();
+            std.debug.print("!!Read byte {}\n", .{msg_len});
             if (msg_len > 0x7F) {
                 return error.VarIntTooLarge;
             }

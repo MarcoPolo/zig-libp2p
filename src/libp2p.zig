@@ -276,8 +276,12 @@ pub const Libp2p = struct {
 
     fn negotiateOutboundStream(self: *Libp2p, stream_handle: StreamHandle, protocol_id: []const u8) !void {
         var stream_ptr = try self.transport.stream_system.handle_allocator.getPtr(stream_handle);
+        stream_ptr.setDelaySendFlag();
+        defer stream_ptr.resetFlags();
+
         var stream_reader = MsQuicTransport.Stream.Reader{ .context = stream_ptr };
         var stream_writer = MsQuicTransport.Stream.Writer{ .context = stream_ptr };
+
         try MultistreamSelect.negotiateOutboundMultistreamSelect(stream_writer, stream_reader, protocol_id);
     }
 
@@ -334,6 +338,10 @@ pub const Libp2p = struct {
 
         var conn_ptr = try self.transport.connection_system.handle_allocator.getPtr(conn_handle);
         std.debug.print("conn={*} I have conn here\n", .{conn_ptr.connection_handle});
+        if (!conn_ptr.peer_id.?.equal(peer)) {
+            std.debug.print("conn={*} Unexpected peer id.\nExp: {}\nsaw: {}\n", .{ conn_ptr.connection_handle, peer, conn_ptr.peer_id.? });
+            return error.UnexpectedPeerID;
+        }
 
         var stream_handle = try conn_ptr.newStream(self.transport);
         std.debug.print("Negotiating outbound\n", .{});
@@ -381,44 +389,77 @@ test "Supported Protocol matcher" {
     try std.testing.expect(!matcher.isSupportedProto("foo"));
 }
 
-test "new outbound stream" {
+fn testSetup(host_key: crypto.ED25519KeyPair) !MsQuicTransport {
+    const allocator = std.testing.allocator;
+    // var host_key = try crypto.ED25519KeyPair.new();
+    // defer host_key.deinit();
+    var cert_key = try crypto.ED25519KeyPair.new();
+    defer cert_key.deinit();
+
+    var x509 = try crypto.X509.init(cert_key, (try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }))[0..]);
+
+    defer x509.deinit();
+
+    // try crypto.Libp2pTLSCert.insertExtension(&x509, try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }));
+
+    var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
+    defer pkcs12.deinit();
+
+    var transport = try MsQuicTransport.init(allocator, "zig-libp2p", &pkcs12, MsQuicTransport.Options.default());
+
+    return transport;
+}
+
+test "e2e hello" {
     const allocator = std.testing.allocator;
 
     var host_key = try crypto.ED25519KeyPair.new();
-    var cert_key = try crypto.ED25519KeyPair.new();
     defer host_key.deinit();
+    var cert_key = try crypto.ED25519KeyPair.new();
     defer cert_key.deinit();
 
-    var x509 = try crypto.X509.init(cert_key);
+    var host_key_2 = try crypto.ED25519KeyPair.new();
+    defer host_key_2.deinit();
+
+    var x509 = try crypto.X509.init(cert_key, (try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }))[0..]);
     defer x509.deinit();
 
-    try crypto.Libp2pTLSCert.insertExtension(&x509, try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }));
+    // try crypto.Libp2pTLSCert.insertExtension(&x509, try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }));
 
     var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
     defer pkcs12.deinit();
 
     var transport = try MsQuicTransport.init(allocator, "zig-libp2p", &pkcs12, MsQuicTransport.Options.default());
     defer transport.deinit();
+    std.debug.print("DEBUG: stream system {*}\n", .{&transport.stream_system.handle_allocator.free_slots});
 
     // Setup a listener
     const TestListener = struct {
-        fn run(l_transport: *MsQuicTransport) !void {
+        fn run(r_transport: *MsQuicTransport, waiter: *std.Thread.Semaphore, hk2: crypto.ED25519KeyPair) !void {
+            _ = r_transport;
+
+            var l_transportt = try testSetup(hk2);
+            defer l_transportt.deinit();
+            var l_transport = &l_transportt;
+            std.debug.print("DEBUG: stream system 2 {*}\n", .{&l_transport.stream_system.handle_allocator.free_slots});
             var libp2p_2 = try Libp2p.initWithTransport(allocator, l_transport);
             defer libp2p_2.deinit();
 
             try libp2p_2.handleStream("hello", *MsQuicTransport, l_transport, @This().handleHello);
-            std.debug.print("debug: Registered handler\n", .{});
 
             try libp2p_2.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
-            std.time.sleep(3 * std.time.ns_per_s);
+            waiter.post();
 
-            std.debug.print("debug: done listening\n", .{});
+            std.time.sleep(1 * std.time.ns_per_s);
+
+            waiter.post();
         }
 
         fn handleHelloAsync(l_transport: *MsQuicTransport, stream: StreamHandle) void {
             std.debug.print("\n\nIn hello handler async\n\n", .{});
             defer {
                 suspend {
+                    std.debug.print("\n\nDONE In hello handler async\n\n", .{});
                     l_transport.allocator.destroy(@frame());
                 }
             }
@@ -432,6 +473,11 @@ test "new outbound stream" {
             };
             std.debug.print("Got {s} on the other side \n\n", .{leasedBuf.buf});
             leasedBuf.releaseAndWaitForNextTick(l_transport, incoming_stream_ptr);
+
+            _ = incoming_stream_ptr.send("hola") catch {
+                @panic("Failed to send");
+            };
+            // TODO handle when we don't get a receive and the connection was shut down
 
             incoming_stream_ptr.*.shutdownNow() catch {
                 std.debug.print("FAILED TO SHUTDOWN\n\n", .{});
@@ -451,23 +497,46 @@ test "new outbound stream" {
         }
     };
 
-    var listener_frame = async TestListener.run(&transport);
-    _ = listener_frame;
+    var waiter = std.Thread.Semaphore{};
+    const testAgainstGoLibp2p = false;
+    var peer: PeerID = undefined;
+    var listener_frame: @Frame(TestListener.run) = undefined;
+    if (testAgainstGoLibp2p) {
+        peer = PeerID{ .Ed25519 = .{ .pub_key_bytes = [32]u8{ 174, 64, 228, 70, 65, 230, 165, 47, 31, 173, 207, 211, 58, 126, 250, 224, 223, 179, 75, 194, 58, 103, 233, 53, 193, 240, 40, 132, 96, 7, 119, 77 } } };
+        waiter.post();
+    } else {
+        peer = try (crypto.ED25519KeyPair.PublicKey{ .key = host_key_2.key }).toPeerID();
+        listener_frame = async TestListener.run(&transport, &waiter, host_key_2);
+    }
 
-    std.time.sleep(std.time.ns_per_s);
+    defer {
+        if (!testAgainstGoLibp2p) {
+            std.debug.print("\n\n\nWaiting for semaphore\n", .{});
+            waiter.wait();
+            waiter.post();
+            std.debug.print("\ndone waiting\n", .{});
+            await listener_frame catch {
+                @panic("Listener failed");
+            };
+        }
+    }
 
     var libp2p = try Libp2p.initWithTransport(allocator, &transport);
     defer libp2p.deinit();
 
-    var peer = try (crypto.ED25519KeyPair.PublicKey{ .key = host_key.key }).toPeerID();
+    waiter.wait();
     var stream_handle = try libp2p.newStream(try std.net.Address.resolveIp("127.0.0.1", 54321), peer, "hello");
     _ = stream_handle;
 
     var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-    std.debug.print("\nSending data\n", .{});
+    std.debug.print("Sending data\n\n", .{});
+
     _ = try stream_ptr.send("hello world");
-    std.debug.print("\nsent data\n", .{});
-    // std.time.sleep(4 * std.time.ns_per_s);
+    std.debug.print("waiting for data\n\n", .{});
+    // TODO return error when the stream is closed
+    var leasedBuf = try stream_ptr.recvWithLease();
+    std.debug.print("\nGot back: {s}\n", .{leasedBuf.buf});
+    leasedBuf.releaseAndWaitForNextTick(&transport, stream_ptr);
 }
 
 // TODOs

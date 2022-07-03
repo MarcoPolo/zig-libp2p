@@ -60,9 +60,9 @@ const MsQuicInstances = struct {
 
 var msquic_instances = MsQuicInstances.init();
 
-var libp2p_proto_name = "zig-libp2p".*;
+var libp2p_proto_name = "libp2p".*;
 const alpn = MsQuic.QUIC_BUFFER{
-    .Length = @sizeOf(@TypeOf(libp2p_proto_name)),
+    .Length = @sizeOf(@TypeOf(libp2p_proto_name)) - 1,
     .Buffer = @ptrCast([*c]u8, libp2p_proto_name[0..]),
 };
 
@@ -152,8 +152,8 @@ pub const MsQuicTransport = struct {
                     _ = peer_x509;
                     defer peer_x509.deinit();
 
-                    var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509) catch {
-                        std.debug.print("Failed to validated conn, closing\n", .{});
+                    var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509, self.transport.allocator) catch |err| {
+                        std.debug.print("Failed to validated conn, closing: {any}\n", .{err});
                         self.transport.msquic.getQuicAPI().ConnectionShutdown.?(connection, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, 0);
                         return MsQuic.QuicStatus.InternalError;
                     };
@@ -374,6 +374,7 @@ pub const MsQuicTransport = struct {
     };
 
     pub const Stream = struct {
+        send_flags: c_uint = 0,
         transport: *MsQuicTransport,
         msquic_stream_handle: MsQuic.HQUIC,
         is_inbound: bool,
@@ -533,7 +534,9 @@ pub const MsQuicTransport = struct {
                     .stream_closed = true,
                     .reserved = 0,
                 }, .Xchg);
-                resume node.data.frame;
+                // TODO uncomment this so caller get an error
+                // Crashes because we don't know if the caller still holds this frame.
+                // resume node.data.frame;
                 allocator.destroy(node);
             }
             while (recv_frame_buffer.get()) |node| {
@@ -551,9 +554,16 @@ pub const MsQuicTransport = struct {
             }
         }
 
-        const SendError = error{StreamSendFailed};
+        const SendError = error{ StreamSendFailed, StreamClosed };
 
         fn sendWithFlags(self: *Stream, buf: []const u8, flags: c_uint) SendError!usize {
+            {
+                self.state_mutex.lock();
+                defer self.state_mutex.unlock();
+                if (self.state.closed) {
+                    return SendError.StreamClosed;
+                }
+            }
             std.debug.print("Send: Stream handle:{*}\n", .{self.msquic_stream_handle});
             var lock = std.event.Lock.initLocked();
 
@@ -583,8 +593,16 @@ pub const MsQuicTransport = struct {
             return buf.len;
         }
 
+        pub fn setDelaySendFlag(self: *Stream) void {
+            self.send_flags = MsQuic.QUIC_SEND_FLAG_DELAY_SEND;
+        }
+
+        pub fn resetFlags(self: *Stream) void {
+            self.send_flags = MsQuic.QUIC_SEND_FLAG_NONE;
+        }
+
         pub fn send(self: *Stream, buf: []const u8) SendError!usize {
-            return self.sendWithFlags(buf, MsQuic.QUIC_SEND_FLAG_NONE);
+            return self.sendWithFlags(buf, self.send_flags);
         }
 
         pub fn flush(self: *Stream) SendError!usize {
@@ -621,7 +639,8 @@ pub const MsQuicTransport = struct {
                 }
 
                 suspend {}
-                std.debug.print("Recv: {any}\n", .{recv_frame.data.leased_buf.state});
+                // std.debug.print("Recv: {any}\n", .{recv_frame.data.leased_buf.state});
+                std.debug.print("Resume recv\n", .{});
                 if (recv_frame.data.leased_buf.state.stream_closed) {
                     return error.StreamClosed;
                 }
@@ -804,10 +823,17 @@ pub const MsQuicTransport = struct {
                     MsQuic.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => {
                         std.debug.print("strm={any} peer shutdown\n", .{msquic_stream});
                     },
+                    MsQuic.QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE => {},
                     MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
                         std.debug.print("strm={any} all done\n", .{msquic_stream});
                         if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
                             self.transport.msquic.getQuicAPI().StreamClose.?(msquic_stream);
+                            {
+                                stream_ptr.state_mutex.lock();
+                                defer stream_ptr.state_mutex.unlock();
+                                stream_ptr.state.closed = true;
+                            }
+
                             stream_ptr.deinit(self.transport.allocator);
                         }
                     },
@@ -1235,6 +1261,9 @@ pub const MsQuicTransport = struct {
         }
 
         _ = conn_ptr.fut.get();
+        const held = conn_ptr.peer_id_lock.acquire();
+        held.release();
+
         return conn_handle;
     }
 
@@ -1344,10 +1373,10 @@ test "transport with cert extension" {
     var cert_key = try crypto.ED25519KeyPair.new();
     defer host_key.deinit();
     defer cert_key.deinit();
-    var x509 = try crypto.X509.init(cert_key);
+    var x509 = try crypto.X509.init(cert_key, (try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }))[0..]);
     defer x509.deinit();
 
-    try crypto.Libp2pTLSCert.insertExtension(&x509, try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }));
+    // try crypto.Libp2pTLSCert.insertExtension(&x509,
 
     var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
     defer pkcs12.deinit();
