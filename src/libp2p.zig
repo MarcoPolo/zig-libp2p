@@ -378,6 +378,7 @@ test {
     _ = @import("./crypto/openssl.zig");
     _ = @import("./crypto.zig");
     _ = @import("./multistream_select.zig");
+    _ = @import("./util/pipe.zig");
     std.testing.refAllDecls(@This());
 }
 
