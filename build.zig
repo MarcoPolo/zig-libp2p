@@ -42,6 +42,37 @@ const Allocator = std.mem.Allocator;
 //     try DOtherSide_build.step.make();
 // }
 
+fn addZigDeps(allocator: Allocator, step: anytype) !void {
+    // Handle reading zig-deps.nix output
+
+    // Open the file
+    const file = try std.fs.openFileAbsolute((try std.process.getEnvMap(std.testing.allocator)).get("ZIG_DEPS").?, .{ .mode = .read_only });
+    defer file.close();
+
+    // Read the contents
+    const max_buffer_size = 1_000_000;
+    const file_buffer = try file.readToEndAlloc(allocator, max_buffer_size);
+    defer allocator.free(file_buffer);
+
+    var parser = std.json.Parser.init(allocator, false);
+    defer parser.deinit();
+
+    var tree = parser.parse(file_buffer) catch @panic("failed to parse JSON");
+    defer tree.deinit();
+
+    var dep_iterator = tree.root.Object.iterator();
+    while (dep_iterator.next()) |dep| {
+        const dep_name = dep.key_ptr;
+        const dep_location = dep.value_ptr.String;
+
+        const dep_pkg = std.build.Pkg{
+            .name = dep_name.*,
+            .source = .{ .path = dep_location },
+        };
+        step.addPackage(dep_pkg);
+    }
+}
+
 fn linkQuiche(l: anytype) void {
     // TODO get this from somewhere else
     l.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
@@ -168,6 +199,11 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const quiche_example_step = b.step("quicheExample", "Run quiche example");
     quiche_example_step.dependOn(&b.addInstallArtifact(quiche_example).step);
 
+    const libp2p_benchmarks = b.addTest("src/benchmarks/main.zig");
+    try addZigDeps(allocator, libp2p_benchmarks);
+    const libp2p_benchmarks_step = b.step("benchmark", "Run benchmarks");
+    libp2p_benchmarks_step.dependOn(&libp2p_benchmarks.step);
+
     const libp2p_tests = b.addTest("src/libp2p.zig");
     libp2p_tests.setBuildMode(mode);
     libp2p_tests.test_evented_io = true;
@@ -185,34 +221,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     // libp2p_tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
 
     // Handle reading zig-deps.nix output
-    {
-        // Open the file
-        const file = try std.fs.openFileAbsolute((try std.process.getEnvMap(std.testing.allocator)).get("ZIG_DEPS").?, .{ .mode = .read_only });
-        defer file.close();
-
-        // Read the contents
-        const buffer_size = 1_000_000;
-        const file_buffer = try file.readToEndAlloc(allocator, buffer_size);
-        defer allocator.free(file_buffer);
-
-        var parser = std.json.Parser.init(allocator, false);
-        defer parser.deinit();
-
-        var tree = parser.parse(file_buffer) catch @panic("failed to parse JSON");
-        defer tree.deinit();
-
-        var dep_iterator = tree.root.Object.iterator();
-        while (dep_iterator.next()) |dep| {
-            const dep_name = dep.key_ptr;
-            const dep_location = dep.value_ptr.String;
-
-            const dep_pkg = std.build.Pkg{
-                .name = dep_name.*,
-                .source = .{ .path = dep_location },
-            };
-            libp2p_tests.addPackage(dep_pkg);
-        }
-    }
+    try addZigDeps(allocator, libp2p_tests);
 
     // libp2p_tests.filter = "Sign and Verify";
     // libp2p_tests.filter = "Spin up transport";

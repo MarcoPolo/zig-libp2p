@@ -379,6 +379,10 @@ test {
     _ = @import("./crypto.zig");
     _ = @import("./multistream_select.zig");
     _ = @import("./util/pipe.zig");
+
+    // Protocols
+    _ = @import("./protocols/ping.zig");
+
     std.testing.refAllDecls(@This());
 }
 

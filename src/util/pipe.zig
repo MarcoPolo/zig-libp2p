@@ -127,6 +127,95 @@ fn NoAllocBufferedPipe(comptime Context: type) type {
     };
 }
 
+fn NoAllocBufferedPipeNotAtomic(comptime Context: type) type {
+    return struct {
+        // Pre allocated nodes to use for our pipe buffer.
+        node_pool: Queue = Queue{},
+        // Our buffered pipe
+        buffered_pipe: Queue = Queue{},
+
+        pub const Queue = std.TailQueue(Context);
+        pub const Node = Queue.Node;
+
+        const Self = @This();
+
+        const Publisher = struct {
+            pipe: *Self,
+            pub fn publish(self: @This(), context: Context) !void {
+                var node = self.pipe.node_pool.pop() orelse {
+                    return error.EmptyBuffer;
+                };
+                node.*.data = context;
+                self.pipe.buffered_pipe.prepend(node);
+            }
+        };
+
+        const Consumer = struct {
+            pipe: *Self,
+
+            const LeasedContext = struct {
+                context: *Context,
+
+                pub inline fn getNode(self: @This()) *Node {
+                    return @fieldParentPtr(Node, "data", self.context);
+                }
+            };
+
+            pub fn consumeWithLease(self: @This()) ?LeasedContext {
+                const node = self.pipe.buffered_pipe.pop() orelse {
+                    return null;
+                };
+                return LeasedContext{ .context = &node.*.data };
+            }
+
+            pub fn returnLease(self: @This(), leased_node: LeasedContext) void {
+                return self.pipe.node_pool.prepend(leased_node.getNode());
+            }
+        };
+
+        // Convenience. Inits this pipe with the allocator with capacity number of nodes.
+        fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !Self {
+            var self = Self{};
+            var i = capacity;
+            while (i > 0) : (i -= 1) {
+                self.node_pool.prepend(try allocator.create(Node));
+            }
+            return self;
+        }
+
+        // // Destroy the node pool memory. Caller
+        // fn freeNodePool(allocator: std.mem.Allocator) void {
+        //     while (self.node_pool.get()) |node| {
+        //         allocator.destroy(node);
+        //     }
+        // }
+
+        /// returns the pipe with no preallocated nodes in the buffer. Callers
+        /// should push allocated nodes to the pool manually.
+        ///
+        /// No deinit is provided. Users should clean up the node_pool and
+        /// buffered_pipe manually. One simple strategy is to free nodes in the
+        /// node pool, and finish up things left in the buffered_pipe.
+        fn init() Self {
+            return Self{};
+        }
+
+        // Push a node to our pool. Used if you init this with no capacity and
+        // need to add nodes to poll for this to work.
+        fn pushNodeToPool(self: @This(), node: *Node) void {
+            self.node_pool.prepend(node);
+        }
+
+        fn publisher(self: *@This()) Publisher {
+            return Publisher{ .pipe = self };
+        }
+
+        fn consumer(self: *@This()) Consumer {
+            return Consumer{ .pipe = self };
+        }
+    };
+}
+
 test "noallocbufferedpipe" {
     var allocator = std.testing.allocator;
 
@@ -174,4 +263,85 @@ test "simple pipe" {
         try std.testing.expect(n == node.?.data);
         allocator.destroy(node.?);
     }
+}
+
+// Attempt to use gotta go fast. Doesn't work on macOS.
+// test "benchmark pipe 2" {
+//     const benchmark = @import("gotta-go-fast");
+
+//     const bench_to_run = struct {
+//         pub fn f(a: u8) !void {
+//             _ = a + 1;
+//         }
+//     };
+
+//     _ = benchmark.bench(.{
+//         .zig_exe = "/nix/store/w3sijlahbl6rr4239bzgm2v5gq3ll077-zig-0.10.0-dev.2842+d65e248ed/bin/zig",
+//         .zig_src_root = "/nix/store/w3sijlahbl6rr4239bzgm2v5gq3ll077-zig-0.10.0-dev.2842+d65e248ed/lib/zig/",
+//     }, bench_to_run.f, .{3});
+// }
+
+test "benchmark pipe" {
+    if (std.os.getenv("RUN_BENCHMARK") == null) {
+        return error.SkipZigTest;
+    }
+    const benchmark = @import("benchmark").benchmark;
+    try benchmark(struct {
+        pub const args = [_][]const u8{
+            &([_]u8{ 1, 2, 3 } ** 32),
+            &([_]u8{ 1, 2, 3 } ** 64),
+            &([_]u8{ 1, 2, 3 } ** 128),
+            &([_]u8{ 1, 2, 3 } ** 256),
+        };
+
+        pub fn publishAndConsume(items: []const u8) !void {
+            var allocator = std.testing.allocator;
+
+            var pipe = try NoAllocBufferedPipe(u8).initWithCapacity(allocator, 3);
+            defer {
+                while (pipe.node_pool.get()) |node| {
+                    allocator.destroy(node);
+                }
+            }
+
+            var publisher = pipe.publisher();
+            var consumer = pipe.consumer();
+            for (items) |item| {
+                try publisher.publish(item);
+                var leasedItem = consumer.consumeWithLease();
+                consumer.returnLease(leasedItem.?);
+            }
+        }
+
+        pub fn publishAndConsumeNotAtomic(items: []const u8) !void {
+            var allocator = std.testing.allocator;
+
+            var pipe = try NoAllocBufferedPipeNotAtomic(u8).initWithCapacity(allocator, 3);
+            defer {
+                while (pipe.node_pool.pop()) |node| {
+                    allocator.destroy(node);
+                }
+            }
+
+            var publisher = pipe.publisher();
+            var consumer = pipe.consumer();
+            var mu = std.Thread.Mutex{};
+            for (items) |item| {
+                {
+                    mu.lock();
+                    defer mu.unlock();
+                    try publisher.publish(item);
+                }
+                {
+                    mu.lock();
+                    var leasedItem = consumer.consumeWithLease();
+                    mu.unlock();
+
+                    mu.lock();
+                    consumer.returnLease(leasedItem.?);
+                    mu.unlock();
+                }
+            }
+        }
+    });
 }
