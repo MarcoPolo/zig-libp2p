@@ -119,15 +119,15 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     const arch = target.cpu_arch orelse builtin.cpu.arch;
 
     if (os == .linux) {
-        l.addLibPath(vars.get("GLIBC").?);
+        // l.addLibPath(vars.get("GLIBC").?);
         // l.addLibPath(try std.fs.path.join(allocator, &.{
         //     vars.get("GLIBC").?,
         //     "..",
         //     "lib64",
         // }));
         // l.linkSystemLibraryName("c");
-        l.linkSystemLibrary("c");
-        // l.linkLibC();
+        // l.linkSystemLibrary("c");
+        l.linkLibC();
     }
 
     const libmsquic_os_path = switch (os) {
