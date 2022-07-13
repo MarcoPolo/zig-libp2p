@@ -60,7 +60,8 @@
               else [ ]);
               # PKG_CONFIG_PATH = "${pkgs.openssl_3_0.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
-              LIBSYSTEM_INCLUDE = "${pkgs.darwin.Libsystem.outPath}/include";
+              LIBSYSTEM_INCLUDE = (if pkgs.stdenv.isDarwin then
+                "${pkgs.darwin.Libsystem.outPath}/include" else "");
               PB_INCLUDE = "${pkgs.protobufc}/include";
               LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
               LIB_OPENSSL = "${openssl.dev}";

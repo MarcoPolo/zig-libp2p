@@ -43,6 +43,9 @@ rec {
   depsJson = pkgs.writeTextFile
     {
       name = "deps.json";
+      checkPhase = ''
+        chmod 755 $out
+      '';
       text = ''
         { 
           "base32": "${base32.src}/src/base32.zig",
