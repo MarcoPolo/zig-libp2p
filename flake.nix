@@ -19,7 +19,7 @@
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
       in
       {
-        packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { };
+        packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { quictls = openssl; };
         packages.zls = pkgs.stdenvNoCC.mkDerivation {
           name = "zls";
           version = "master";
@@ -52,10 +52,12 @@
                 pkgs.protobufc
                 pkgs.protobuf
                 pkgs.go_1_17
-              ] ++ (with pkgs.darwin.apple_sdk.frameworks; [
-                Security
-                Foundation
-              ]);
+              ]
+              ++ (if pkgs.stdenv.isDarwin
+              then
+                (with pkgs.darwin.apple_sdk.frameworks;
+                [ Security Foundation ] ++ [ pkgs.xcbuild ])
+              else [ ]);
               # PKG_CONFIG_PATH = "${pkgs.openssl_3_0.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
               LIBSYSTEM_INCLUDE = "${pkgs.darwin.Libsystem.outPath}/include";

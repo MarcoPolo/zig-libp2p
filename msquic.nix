@@ -1,6 +1,6 @@
-{ stdenv, fetchFromGitHub, clangStdenv, cmake, powershell, darwin, perl, xcbuild }:
+{ stdenv, fetchFromGitHub, clangStdenv, cmake, powershell, darwin, perl, xcbuild, quictls, pkgs }:
 
-clangStdenv.mkDerivation rec {
+pkgs.clang12Stdenv.mkDerivation rec {
   pname = "libmsquic";
   version = "4326e6bac26d880fa833a7edcf39fcc27f1996f9";
   src = fetchFromGitHub {
@@ -11,7 +11,9 @@ clangStdenv.mkDerivation rec {
     sha256 = "sha256-6Ga3Iqlhh60unRfzWVmu0iFDUdF4F1aBelHvhZObPP4=";
   };
   buildInputs = [
-    clangStdenv
+    pkgs.clang12Stdenv
+    quictls
+    pkgs.python3
     cmake
     powershell
     perl
@@ -25,7 +27,11 @@ clangStdenv.mkDerivation rec {
   configurePhase = "echo noop";
 
   buildPhase = ''
-    ls -lha .
+    # Patch #!/bin/sh. This doesn't exist in our Nix builder
+    patchShebangs --build submodules/openssl/config
+    # Replace /usr/bin/env. These don't exists in our Nix builder
+    sed -i "s@usr/bin/env@${pkgs.coreutils}/bin/env@g" submodules/openssl/config
+    cat submodules/openssl/config
     # HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
     HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
   '';
