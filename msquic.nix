@@ -1,6 +1,6 @@
 { stdenv, fetchFromGitHub, clangStdenv, cmake, powershell, darwin, perl, xcbuild, quictls, pkgs }:
 
-pkgs.clang12Stdenv.mkDerivation rec {
+pkgs.clangStdenv.mkDerivation rec {
   pname = "libmsquic";
   version = "4326e6bac26d880fa833a7edcf39fcc27f1996f9";
   src = fetchFromGitHub {
@@ -11,7 +11,7 @@ pkgs.clang12Stdenv.mkDerivation rec {
     sha256 = "sha256-6Ga3Iqlhh60unRfzWVmu0iFDUdF4F1aBelHvhZObPP4=";
   };
   buildInputs = [
-    pkgs.clang12Stdenv
+    pkgs.clangStdenv
     quictls
     pkgs.python3
     cmake

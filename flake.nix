@@ -56,7 +56,7 @@
               ++ (if pkgs.stdenv.isDarwin
               then
                 (with pkgs.darwin.apple_sdk.frameworks;
-                [ Security Foundation ] ++ [ pkgs.xcbuild ])
+                [ Security Foundation ])
               else [ ]);
               # PKG_CONFIG_PATH = "${pkgs.openssl_3_0.dev}/lib/pkgconfig";
               # FRAMEWORKS = "${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks:${pkgs.darwin.apple_sdk.frameworks.Foundation}/Library/Frameworks";
