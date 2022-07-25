@@ -441,7 +441,7 @@ pub const MsQuicTransport = struct {
                 waitForNextTick();
             }
 
-            pub fn release(self: *LeasedBuffer, transport: *MsQuicTransport, stream: *Stream) void {
+            pub fn release(self: *LeasedBuffer, transport: *const MsQuicTransport, stream: *Stream) void {
                 // TODO remove transport param
                 const prev_state = self.atomicStateUpdate(LeasedBufferState{
                     .active_lease = false,

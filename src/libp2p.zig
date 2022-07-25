@@ -13,6 +13,8 @@ pub const ConnHandle = MsQuicTransport.ConnectionSystem.Handle;
 pub const StreamHandle = MsQuicTransport.StreamSystem.Handle;
 
 pub const Libp2p = struct {
+    host_key: crypto.ED25519KeyPair,
+    options: Options,
     transport: *MsQuicTransport,
     active_conns: ActiveConnsMap,
     active_listeners: ListenerList,
@@ -239,8 +241,31 @@ pub const Libp2p = struct {
         }
     };
 
-    fn initWithTransport(allocator: Allocator, transport: *MsQuicTransport) !Libp2p {
+    pub const Options = struct {
+        msquic_options: MsQuicTransport.Options = MsQuicTransport.Options.default(),
+        host_key: ?crypto.ED25519KeyPair = null,
+        transport: ?*MsQuicTransport = null,
+    };
+
+    pub fn init(allocator: Allocator, options: Options) !Libp2p {
+        var host_key = options.host_key orelse try crypto.ED25519KeyPair.new(); 
+
+        var transport = options.transport orelse blk: {
+            var cert_key = try crypto.ED25519KeyPair.new();
+            defer cert_key.deinit();
+
+            var x509 = try crypto.X509.init(cert_key, (try crypto.Libp2pTLSCert.serializeLibp2pExt(.{ .host_key = host_key, .cert_key = cert_key }))[0..]);
+            defer x509.deinit();
+
+            var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
+            defer pkcs12.deinit();
+            var t = try allocator.create(MsQuicTransport); 
+            t.* = try MsQuicTransport.init(allocator, "zig-libp2p", &pkcs12, MsQuicTransport.Options.default());
+            break :blk t;
+        };
         var self = Libp2p{
+            .host_key = host_key,
+            .options = options,
             .transport = transport,
             .active_conns = ActiveConnsMap.init(allocator),
             .incoming_handlers = try IncomingStreamHandlers.init(allocator),
@@ -249,7 +274,8 @@ pub const Libp2p = struct {
 
         return self;
     }
-    fn deinit(self: *Libp2p) void {
+
+    pub fn deinit(self: *Libp2p, allocator: Allocator) void {
         {
             var it = self.active_conns.iterator();
             while (it.next()) |conn_list| {
@@ -272,6 +298,16 @@ pub const Libp2p = struct {
         }
 
         self.incoming_handlers.deinit();
+
+        if (self.options.transport == null) {
+            // We created this transport, we need to destory it
+            self.transport.deinit();
+            allocator.destroy(self.transport);
+        }
+
+        if (self.options.host_key == null) {
+            self.host_key.deinit();
+        }
     }
 
     fn negotiateOutboundStream(self: *Libp2p, stream_handle: StreamHandle, protocol_id: []const u8) !void {
@@ -362,13 +398,13 @@ pub const Libp2p = struct {
         try active_conns.append(conn);
     }
 
-    fn listen(self: *Libp2p, addr: std.net.Address) !void {
+    pub fn listen(self: *Libp2p, addr: std.net.Address) !void {
         // TODO protect this and others?
         var l = try Listener.init(self.active_listeners.allocator, self.transport, addr, &self.incoming_handlers, self);
         try self.active_listeners.append(l);
     }
 
-    fn handleStream(self: *Libp2p, proto_id: []const u8, comptime Context: type, context: Context, comptime handler: fn (Context, StreamHandle) void) !void {
+    pub fn handleStream(self: *Libp2p, proto_id: []const u8, comptime Context: type, context: Context, comptime handler: fn (Context, StreamHandle) void) !void {
         try self.incoming_handlers.registerHandler(proto_id, Context, context, handler);
     }
 };
@@ -443,14 +479,14 @@ test "e2e hello" {
         fn run(r_transport: *MsQuicTransport, waiter: *std.Thread.Semaphore, hk2: crypto.ED25519KeyPair) !void {
             _ = r_transport;
 
-            var l_transportt = try testSetup(hk2);
-            defer l_transportt.deinit();
-            var l_transport = &l_transportt;
-            std.debug.print("DEBUG: stream system 2 {*}\n", .{&l_transport.stream_system.handle_allocator.free_slots});
-            var libp2p_2 = try Libp2p.initWithTransport(allocator, l_transport);
-            defer libp2p_2.deinit();
+            // var l_transportt = try testSetup(hk2);
+            // defer l_transportt.deinit();
+            // var l_transport = &l_transportt;
+            // std.debug.print("DEBUG: stream system 2 {*}\n", .{&l_transport.stream_system.handle_allocator.free_slots});
+            var libp2p_2 = try Libp2p.init(allocator, .{.host_key = hk2});
+            defer libp2p_2.deinit(allocator);
 
-            try libp2p_2.handleStream("hello", *MsQuicTransport, l_transport, @This().handleHello);
+            try libp2p_2.handleStream("hello", *MsQuicTransport, libp2p_2.transport, @This().handleHello);
 
             try libp2p_2.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
             waiter.post();
@@ -526,8 +562,8 @@ test "e2e hello" {
         }
     }
 
-    var libp2p = try Libp2p.initWithTransport(allocator, &transport);
-    defer libp2p.deinit();
+    var libp2p = try Libp2p.init(allocator, .{.transport = &transport, .host_key = host_key});
+    defer libp2p.deinit(allocator);
 
     waiter.wait();
     var stream_handle = try libp2p.newStream(try std.net.Address.resolveIp("127.0.0.1", 54321), peer, "hello");
