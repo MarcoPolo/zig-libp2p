@@ -32,8 +32,8 @@ pkgs.clangStdenv.mkDerivation rec {
     # Replace /usr/bin/env. These don't exists in our Nix builder
     sed -i "s@usr/bin/env@${pkgs.coreutils}/bin/env@g" submodules/openssl/config
     cat submodules/openssl/config
-    # HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
-    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
+    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
+    # HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
   '';
 
   installPhase = ''

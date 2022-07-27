@@ -39,7 +39,6 @@ const Ping = struct {
                 @panic("Failed to send");
             };
 
-            std.debug.print("Got {s} on the other side \n\n", .{leasedBuf.buf});
             leasedBuf.release(transport, incoming_stream_ptr);
         }
     }
