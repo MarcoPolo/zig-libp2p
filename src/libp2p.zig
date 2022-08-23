@@ -1,13 +1,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const MsQuicTransport = @import("./transport/msquic.zig").MsQuicTransport;
+pub const MsQuicTransport = @import("./transport/msquic.zig").MsQuicTransport;
+pub const HandleError = @import("./handle.zig").HandleError;
 const MultistreamSelect = @import("./multistream_select.zig").MultistreamSelect;
 const Loop = std.event.Loop;
 const global_event_loop = Loop.instance orelse
     @compileError("libp2p transport relies on the event loop");
 
-const crypto = @import("./crypto.zig");
-const PeerID = crypto.PeerID;
+pub const crypto = @import("./crypto.zig");
+pub const PeerID = crypto.PeerID;
 
 pub const ConnHandle = MsQuicTransport.ConnectionSystem.Handle;
 pub const StreamHandle = MsQuicTransport.StreamSystem.Handle;
@@ -203,24 +204,24 @@ pub const Libp2p = struct {
         }
 
         fn acceptStreamLoop(self: Listener, allocator: Allocator, conn: MsQuicTransport.ConnectionSystem.Handle) !void {
-            // Start this loop on the next tick from the event loop rather than rely on the caller to drive this forward.
-            std.debug.print("\n\n f2 is at {anyframe}\n\n", .{@frame()});
-
             defer {
                 suspend {
                     allocator.destroy(@frame());
                 }
             }
 
-            // var tick_node = Loop.NextTickNode{ .prev = undefined, .next = undefined, .data = @frame() };
-            // suspend {
-            //     global_event_loop.onNextTick(&tick_node);
-            // }
+            // Start this loop on the next tick from the event loop rather than rely on the caller to drive this forward.
+            var tick_node = Loop.NextTickNode{ .prev = undefined, .next = undefined, .data = @frame() };
+            suspend {
+                global_event_loop.onNextTick(&tick_node);
+            }
 
             while (true) {
                 const conn_ptr = try self.transport.connection_system.handle_allocator.getPtr(conn);
                 var incoming_stream = try conn_ptr.acceptStream(allocator);
-                try self.driveInboundStreamNegotiation(incoming_stream);
+                self.driveInboundStreamNegotiation(incoming_stream) catch |err| {
+                    std.debug.print("Err in negotiating stream: {}", .{err});
+                };
             }
         }
 
@@ -235,7 +236,7 @@ pub const Libp2p = struct {
                 @panic("TODO not supported close this stream");
             };
             handler.handleIncomingStream(stream) catch |err| {
-                _ = err;
+                std.debug.print("Error in handling incoming stream: {}", .{err});
                 // TODO close stream on error
             };
         }
@@ -248,7 +249,7 @@ pub const Libp2p = struct {
     };
 
     pub fn init(allocator: Allocator, options: Options) !Libp2p {
-        var host_key = options.host_key orelse try crypto.ED25519KeyPair.new(); 
+        var host_key = options.host_key orelse try crypto.ED25519KeyPair.new();
 
         var transport = options.transport orelse blk: {
             var cert_key = try crypto.ED25519KeyPair.new();
@@ -259,7 +260,7 @@ pub const Libp2p = struct {
 
             var pkcs12 = try crypto.PKCS12.init(cert_key, x509);
             defer pkcs12.deinit();
-            var t = try allocator.create(MsQuicTransport); 
+            var t = try allocator.create(MsQuicTransport);
             t.* = try MsQuicTransport.init(allocator, "zig-libp2p", &pkcs12, MsQuicTransport.Options.default());
             break :blk t;
         };
@@ -418,6 +419,7 @@ test {
 
     // Protocols
     _ = @import("./protocols/ping.zig");
+    _ = @import("./protocols/bandwidth_perf.zig");
 
     std.testing.refAllDecls(@This());
 }
@@ -483,7 +485,7 @@ test "e2e hello" {
             // defer l_transportt.deinit();
             // var l_transport = &l_transportt;
             // std.debug.print("DEBUG: stream system 2 {*}\n", .{&l_transport.stream_system.handle_allocator.free_slots});
-            var libp2p_2 = try Libp2p.init(allocator, .{.host_key = hk2});
+            var libp2p_2 = try Libp2p.init(allocator, .{ .host_key = hk2 });
             defer libp2p_2.deinit(allocator);
 
             try libp2p_2.handleStream("hello", *MsQuicTransport, libp2p_2.transport, @This().handleHello);
@@ -562,7 +564,7 @@ test "e2e hello" {
         }
     }
 
-    var libp2p = try Libp2p.init(allocator, .{.transport = &transport, .host_key = host_key});
+    var libp2p = try Libp2p.init(allocator, .{ .transport = &transport, .host_key = host_key });
     defer libp2p.deinit(allocator);
 
     waiter.wait();

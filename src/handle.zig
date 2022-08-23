@@ -17,6 +17,8 @@ pub fn TypedHandle(comptime T: type) type {
     };
 }
 
+pub const HandleError = error{StaleHandle};
+
 pub fn HandleAllocator(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -59,9 +61,9 @@ pub fn HandleAllocator(comptime T: type) type {
             return handle;
         }
 
-        pub fn freeSlot(self: *Self, handle: Handle) !void {
+        pub fn freeSlot(self: *Self, handle: Handle) HandleError!void {
             if (self.active_handles.items[handle.index].handle.pattern != handle.pattern) {
-                return error.StaleHandle;
+                return HandleError.StaleHandle;
             }
             const next_handle = Handle{
                 .index = handle.index,
@@ -76,7 +78,7 @@ pub fn HandleAllocator(comptime T: type) type {
         // Returns a temporary popinter to the underlying listener. The caller
         // should forget this pointer as soon as possible, since it may be
         // invalidated by the handle allocator at any time.
-        pub inline fn getPtr(self: *const Self, handle: Handle) !*T {
+        pub inline fn getPtr(self: *const Self, handle: Handle) HandleError!*T {
             const pattern = handle.pattern;
             var slot = &self.active_handles.items[handle.index];
             if (slot.handle.pattern != pattern) {
@@ -112,6 +114,6 @@ test "Handle system" {
     try thingSystem.freeSlot(handle);
 
     // Now try to use it again
-    try std.testing.expectError(error.StaleHandle, thingSystem.getPtr(handle));
-    try std.testing.expectError(error.StaleHandle, thingSystem.freeSlot(handle));
+    try std.testing.expectError(HandleError.StaleHandle, thingSystem.getPtr(handle));
+    try std.testing.expectError(HandleError.StaleHandle, thingSystem.freeSlot(handle));
 }

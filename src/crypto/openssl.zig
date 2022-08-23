@@ -134,9 +134,8 @@ pub const X509 = struct {
 
         // X509{.inner = x509.?}
         if (libp2p_extension_data != null) {
-            try insertLibp2pExtension(X509{.inner = x509.?}, libp2p_extension_data.?);
+            try insertLibp2pExtension(X509{ .inner = x509.? }, libp2p_extension_data.?);
         }
-
 
         // Null since ed25519 doesn't support digest here
         if (c.X509_sign(x509, pkey, null) == 0) {
@@ -352,7 +351,7 @@ pub const ED25519KeyPair = struct {
             break :blk b32_size;
         };
 
-        fn toPeerIDString(self: @This()) ![PeerIDStrLen]u8 {
+        pub fn toPeerIDString(self: @This()) ![PeerIDStrLen]u8 {
             var bytes = (([_]u8{
                 // cidv1
                 0x01,
@@ -503,8 +502,42 @@ pub const ED25519KeyPair = struct {
         return ED25519KeyPair{ .key = pkey.? };
     }
 
+    pub fn fromPrivKey(b32PrivKey: []const u8) !ED25519KeyPair {
+        if (b32PrivKey[0] != 'b') {
+            // TODO support all of multibase
+            return error.notBase32Multibase;
+        }
+
+        var k: [key_len]u8 = undefined;
+        _ = try no_padding_encoding.decode(&k, b32PrivKey[1..]);
+        var key = c.EVP_PKEY_new_raw_private_key(c.EVP_PKEY_ED25519, null, &k, k.len);
+
+        return ED25519KeyPair{ .key = key.? };
+    }
+
+    pub const priv_b32_size = no_padding_encoding.encodeLen(key_len) + 1;
+    pub fn privKey(self: *ED25519KeyPair) ![priv_b32_size]u8 {
+        var priv_key_bytes = [_]u8{0} ** key_len;
+        var expected_len: usize = key_len;
+        // var pub_key_out_slice = out[4..];
+        if (c.EVP_PKEY_get_raw_private_key(self.key, &priv_key_bytes, &expected_len) == 0) {
+            return error.GetPrivKeyFailed;
+        }
+
+        var buf = [_]u8{0} ** priv_b32_size;
+        // Multibase "b" base32
+        buf[0] = 'b';
+
+        _ = no_padding_encoding.encode(buf[1..], priv_key_bytes[0..]);
+        return buf;
+    }
+
     pub fn deinit(self: ED25519KeyPair) void {
         c.EVP_PKEY_free(self.key);
+    }
+
+    pub fn toPubKey(self: *ED25519KeyPair) PublicKey {
+        return PublicKey{ .key = self.key };
     }
 
     fn genPkcs12() !PKCS12 {
@@ -731,8 +764,6 @@ pub const Key = union(KeyType) {
                     return error.UnsupportedFieldTag;
                 },
             };
-
-            // const field_val =
 
             if (field_num == 1 and field_val == .u8) {
                 key_type = @intToEnum(KeyType, field_val.u8);

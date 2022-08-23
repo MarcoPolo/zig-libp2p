@@ -525,7 +525,7 @@ const alpn = MsQuic.QUIC_BUFFER{
 fn loadServerConfig(msquic: *MsQuic.QUIC_API_TABLE, registration: *MsQuic.HQUIC) !MsQuic.HQUIC {
     var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
-    settings.IdleTimeoutMs = 1000;
+    settings.IdleTimeoutMs = 5000;
     settings.IsSet.IdleTimeoutMs = true;
 
     // Configures the server's resumption level to allow for resumption and

@@ -153,7 +153,7 @@ pub const MsQuicTransport = struct {
                     defer peer_x509.deinit();
 
                     var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509, self.transport.allocator) catch |err| {
-                        std.debug.print("Failed to validated conn, closing: {any}\n", .{err});
+                        std.debug.print("Failed to validate conn, closing: {any}\n", .{err});
                         self.transport.msquic.getQuicAPI().ConnectionShutdown.?(connection, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, 0);
                         return MsQuic.QuicStatus.InternalError;
                     };
@@ -534,9 +534,10 @@ pub const MsQuicTransport = struct {
                     .stream_closed = true,
                     .reserved = 0,
                 }, .Xchg);
-                // TODO uncomment this so caller get an error
+
+                // TODO investigate this crash
                 // Crashes because we don't know if the caller still holds this frame.
-                // resume node.data.frame;
+                resume node.data.frame;
                 allocator.destroy(node);
             }
             while (recv_frame_buffer.get()) |node| {
@@ -817,8 +818,14 @@ pub const MsQuicTransport = struct {
                             }
                         }
                     },
+                    MsQuic.QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED => {
+                        std.debug.print("strm={any} peer recv aborted\n", .{msquic_stream});
+                        stream_ptr.shutdownNow() catch |err| {
+                            std.debug.print("Error in shutting down stream: {}", .{err});
+                        };
+                    },
                     MsQuic.QUIC_STREAM_EVENT_PEER_SEND_ABORTED => {
-                        std.debug.print("strm={any} peer aborted\n", .{msquic_stream});
+                        std.debug.print("strm={any} peer send aborted\n", .{msquic_stream});
                     },
                     MsQuic.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => {
                         std.debug.print("strm={any} peer shutdown\n", .{msquic_stream});
@@ -1166,7 +1173,7 @@ pub const MsQuicTransport = struct {
     fn loadConfiguration(msquic: *const MsQuic.QUIC_API_TABLE, registration: *MsQuic.HQUIC, pkcs12: *crypto.PKCS12, options: Options) !MsQuic.HQUIC {
         var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
-        settings.IdleTimeoutMs = 1000;
+        settings.IdleTimeoutMs = 5000;
         settings.IsSet.IdleTimeoutMs = true;
 
         // Configures the server's resumption level to allow for resumption and
@@ -1177,7 +1184,7 @@ pub const MsQuicTransport = struct {
         // Configures the server's settings to allow for the peer to open a single
         // bidirectional stream. By default connections are not configured to allow
         // any streams from the peer.
-        settings.PeerBidiStreamCount = 1;
+        settings.PeerBidiStreamCount = 1024;
         settings.IsSet.PeerBidiStreamCount = true;
 
         var cred_helper = CredentialConfigHelper{

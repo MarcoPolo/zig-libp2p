@@ -87,6 +87,7 @@ pub const MultistreamSelect = struct {
 
         while (true) {
             const msg_len = try smallDelimRead(reader, matched_proto_buf[0..]);
+            std.debug.print("Got proto {s}\n", .{matched_proto_buf[0..msg_len]});
             if (supportedProtoMatcher.isSupportedProto(matched_proto_buf[0..msg_len])) {
                 try delimWrite(writer, matched_proto_buf[0..msg_len]);
                 return msg_len;

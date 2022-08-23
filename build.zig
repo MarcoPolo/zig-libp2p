@@ -69,6 +69,7 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
             .name = dep_name.*,
             .source = .{ .path = dep_location },
         };
+        std.debug.print("Adding pkg {s} {s}\n", .{ dep_name.*, dep_location });
         step.addPackage(dep_pkg);
     }
 }
@@ -246,6 +247,33 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     libp2p_tests.addIncludeDir("src/workaround");
     const libp2p_tests_step = b.step("libp2p_tests", "Run libp2p tests");
     libp2p_tests_step.dependOn(&libp2p_tests.step);
+
+    // start libp2p examples
+
+    const bandwidth_perf = b.addExecutable("bandwidth_perf", "examples/bandwidth_perf.zig");
+
+    bandwidth_perf.addPackage(std.build.Pkg{
+        .name = "zig-libp2p",
+        .source = .{
+            .path = "src/libp2p.zig",
+        },
+        .dependencies = libp2p_tests.packages.items,
+    });
+
+    bandwidth_perf.setBuildMode(mode);
+
+    // Handle reading zig-deps.nix output
+    try addZigDeps(allocator, bandwidth_perf);
+
+    try linkMsquic(allocator, target, bandwidth_perf);
+    try includeLibSystemFromNix(allocator, bandwidth_perf);
+
+    bandwidth_perf.addIncludeDir("src/workaround");
+    const bandwidth_perf_server_step = b.step("bandwidth_perf", "Build bandwidth perf");
+    bandwidth_perf_server_step.dependOn(&bandwidth_perf.step);
+    bandwidth_perf_server_step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
+
+    // end libp2p examples
 
     const msquic_example = b.addExecutable("msquicExample", "examples/msquic.zig");
     msquic_example.setBuildMode(mode);
