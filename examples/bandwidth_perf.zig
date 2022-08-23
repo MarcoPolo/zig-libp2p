@@ -23,6 +23,13 @@ const BandwidthPerf = struct {
         frame.* = async handlerAsync(transport, stream);
     }
     fn handlerAsync(transport: *MsQuicTransport, stream: StreamHandle) void {
+        var seed: [8]u8 = undefined;
+        std.os.getrandom(&seed) catch {
+            @panic("Failed to load random seed");
+        };
+        var prng = std.rand.Isaac64.init(std.mem.bytesAsValue(u64, &seed).*);
+        var random = prng.random();
+
         defer {
             suspend {
                 transport.allocator.destroy(@frame());
@@ -50,7 +57,7 @@ const BandwidthPerf = struct {
                 std.debug.print("Err: {}. {}\n\n", .{ err, @typeInfo(@TypeOf(err)) });
                 @panic("todo fixme 2");
             };
-            std.crypto.random.bytes(buf1[0..]);
+            random.bytes(buf1[0..]);
 
             _ = incoming_stream_ptr.send(buf1[0..]) catch |err| {
                 std.debug.print("Err: {}. Stream closed ?", .{err});
@@ -59,23 +66,30 @@ const BandwidthPerf = struct {
         }
     }
 
-    fn initiateBandwidthPerf(libp2p: *Libp2p, addr: std.net.Address, peer: PeerID) !void {
+    fn initiateBandwidthPerf(libp2p: *Libp2p, addr: std.net.Address, peer: PeerID, byte_size: u32) !void {
         const transport = libp2p.transport;
         var stream_handle = try libp2p.newStream(addr, peer, id);
 
-        var i: usize = 10;
+        var recvd: usize = 0;
+        var start = try std.time.Instant.now();
 
-        while (i > 0) : (i -= 1) {
+        while (recvd < byte_size) {
             var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-            // var start = try std.time.Instant.now();
 
             std.debug.print("waiting for data\n\n", .{});
 
             // TODO return error when the stream is closed
             var leased_buf = try stream_ptr.recvWithLease();
-            std.debug.print("Read {} bytes\n", .{leased_buf.buf.len});
+            recvd += leased_buf.buf.len;
             leased_buf.release(transport, stream_ptr);
         }
+
+        const dur = (try std.time.Instant.now()).since(start);
+        std.debug.print("Transfer took {} nanoseconds\n", .{dur});
+        // var speed = @intToFloat(f64, dur);
+        var speed: f64 = (@intToFloat(f64, recvd * std.time.ns_per_s) / @intToFloat(f64, dur));
+        speed = speed / @intToFloat(f64, 1 << 20);
+        std.debug.print("Speed {} MB/s \n", .{speed});
 
         {
             var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
@@ -144,8 +158,15 @@ pub fn main() !void {
         var initator = try Libp2p.init(allocator, .{ .host_key = initiator_key });
         defer initator.deinit(allocator);
 
-        // var peer = try (crypto.ED25519KeyPair.PublicKey{ .key = responder_key.key }).toPeerID();
-        // try BandwidthPerf.initiateBandwidthPerf(&initator, try std.net.Address.resolveIp("127.0.0.1", 54321), peer);
+        var responder_pub_key = try crypto.ED25519KeyPair.PublicKey.fromPeerIDString(std.os.getenv("RESPONDER_KEY").?);
+
+        var peer = try responder_pub_key.toPeerID();
+        std.debug.print("Got peer info", .{});
+
+        var byte_size_str = std.os.getenv("BYTE_SIZE") orelse "1048576";
+        std.debug.print("Got size: {s}\n\n", .{byte_size_str});
+        const byte_size = try std.fmt.parseUnsigned(u32, byte_size_str, 0);
+        try BandwidthPerf.initiateBandwidthPerf(&initator, try std.net.Address.resolveIp("127.0.0.1", 54321), peer, byte_size);
     } else {
         @panic("Expected server or client as command");
     }

@@ -233,9 +233,9 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     // libp2p_tests.addOptions(test_filter);
     // libp2p_tests.filter = test_filter;
 
-    var vars = try std.process.getEnvMap(allocator);
-    libp2p_tests.filter = vars.get("TEST_FILTER") orelse "";
-    // libp2p_tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+    // var vars = try std.process.getEnvMap(allocator);
+    // libp2p_tests.filter = vars.get("TEST_FILTER") orelse "";
+    libp2p_tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
 
     // Handle reading zig-deps.nix output
     try addZigDeps(allocator, libp2p_tests);

@@ -75,6 +75,9 @@ const Ping = struct {
 
             leasedBuf.release(transport, stream_ptr);
         }
+
+        var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
+        try stream_ptr.shutdownNow();
         return;
     }
 };
