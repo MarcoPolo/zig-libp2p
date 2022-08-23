@@ -3,7 +3,7 @@
   inputs.nixpkgs.url = "github:nixos/nixpkgs/release-21.11";
   inputs.nixpkgs-unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.zig-overlay.url = "github:arqv/zig-overlay";
+  inputs.zig-overlay.url = "github:mitchellh/zig-overlay";
 
 
   outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay }:
@@ -13,7 +13,7 @@
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         deps = (import ./dependencies.nix { inherit system; });
         openssl = pkgs-unstable.quictls;
-        zig = zig-overlay.packages.${system}.master.latest;
+        zig = zig-overlay.packages.${system}.master;
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
       in
       {
