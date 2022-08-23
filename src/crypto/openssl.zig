@@ -376,6 +376,33 @@ pub const ED25519KeyPair = struct {
             return buf;
         }
 
+        pub fn fromPeerIDString(peer_id: []const u8) !ED25519KeyPair.PublicKey {
+            var buf = (([_]u8{
+                // cidv1
+                0x01,
+                // libp2p-key
+                0x72,
+                // multihash identity
+                0x00,
+                @intCast(u8, pb_encoded_len),
+            }) ++ [_]u8{0} ** pb_encoded_len);
+
+            if (peer_id[0] != 'b') {
+                return error.NotMultibase32;
+            }
+
+            // +1 for the multibase prefix
+            no_padding_encoding.decode(buf, peer_id[1..]);
+
+            if (buf[0] != 0x01 or buf[1] != 0x72 or buf[2] != 0x00) {
+                return error.NotProperlyEncoded;
+            }
+
+            // The key should be written starting at the 5th byte
+            var key = try Key.deserializePb(buf[4..]);
+            return try ED25519KeyPair.PublicKey.initFromKey(key);
+        }
+
         fn matchesPeerIDStr(self: @This(), str: []u8) !bool {
             if (str.len != PeerIDStrLen) {
                 return error.WrongLen;
@@ -1087,4 +1114,15 @@ test "To PeerID string" {
     const pub_key = ED25519KeyPair.PublicKey{ .key = kp.key };
     const peerIDStr = try pub_key.toPeerIDString();
     std.debug.print("peer id {s}\n", .{peerIDStr});
+}
+
+test "Round trip peer id" {
+    const kp = try ED25519KeyPair.new();
+    defer kp.deinit();
+
+    const p = kp.toPubKey().toPeerIDString();
+    const kp2 = ED25519KeyPair.PublicKey.fromPeerIDString(p[0..]);
+    const p2 = kp2.toPubKey().toPeerIDString();
+
+    try std.testing.expectEqualSlices(u8, p, p2);
 }
