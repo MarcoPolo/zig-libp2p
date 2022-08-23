@@ -46,7 +46,8 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
     // Handle reading zig-deps.nix output
 
     // Open the file
-    const file = try std.fs.openFileAbsolute((try std.process.getEnvMap(std.testing.allocator)).get("ZIG_DEPS").?, .{ .mode = .read_only });
+
+    const file = try std.fs.openFileAbsolute(std.os.getenv("ZIG_DEPS").?, .{ .mode = .read_only });
     defer file.close();
 
     // Read the contents
@@ -69,7 +70,7 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
             .name = dep_name.*,
             .source = .{ .path = dep_location },
         };
-        std.debug.print("Adding pkg {s} {s}\n", .{ dep_name.*, dep_location });
+        // std.debug.print("Adding pkg {s} {s}\n", .{ dep_name.*, dep_location });
         step.addPackage(dep_pkg);
     }
 }
@@ -179,11 +180,11 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
-    const allocator = blk: {
-        const _Allocator = std.heap.GeneralPurposeAllocator(.{});
-        var _allocator = _Allocator{};
-        break :blk _allocator.allocator();
-    };
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();

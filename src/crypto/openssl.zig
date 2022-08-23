@@ -392,7 +392,7 @@ pub const ED25519KeyPair = struct {
             }
 
             // +1 for the multibase prefix
-            no_padding_encoding.decode(buf, peer_id[1..]);
+            _ = try no_padding_encoding.decode(buf[0..], peer_id[1..]);
 
             if (buf[0] != 0x01 or buf[1] != 0x72 or buf[2] != 0x00) {
                 return error.NotProperlyEncoded;
@@ -1117,12 +1117,12 @@ test "To PeerID string" {
 }
 
 test "Round trip peer id" {
-    const kp = try ED25519KeyPair.new();
+    var kp = try ED25519KeyPair.new();
     defer kp.deinit();
 
-    const p = kp.toPubKey().toPeerIDString();
-    const kp2 = ED25519KeyPair.PublicKey.fromPeerIDString(p[0..]);
-    const p2 = kp2.toPubKey().toPeerIDString();
+    const p = try kp.toPubKey().toPeerIDString();
+    var kp2 = try ED25519KeyPair.PublicKey.fromPeerIDString(p[0..]);
+    const p2 = try kp2.toPeerIDString();
 
-    try std.testing.expectEqualSlices(u8, p, p2);
+    try std.testing.expectEqualSlices(u8, p[0..], p2[0..]);
 }

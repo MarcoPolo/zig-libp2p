@@ -26,7 +26,7 @@ const MsQuicHandle = struct {
 
 const MsQuicInstances = struct {
     // Controls how many MsQuic.QUIC_API_TABLES we will want to allocate. Usually you wouldn't need more than one.
-    const MAX_MSQUIC_INSTANCES = 4;
+    const MAX_MSQUIC_INSTANCES = if (builtin.is_test) 32 else 4;
     instances: [MAX_MSQUIC_INSTANCES]*const MsQuic.QUIC_API_TABLE = .{},
     next_free_slot: u8 = 0,
     lock: std.event.RwLock,

@@ -13,7 +13,7 @@
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         deps = (import ./dependencies.nix { inherit system; });
         openssl = pkgs-unstable.quictls;
-        zig = zig-overlay.packages.${system}.master;
+        zig = zig-overlay.packages.${system}."master-2022-07-23";
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
       in
       {

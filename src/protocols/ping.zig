@@ -31,7 +31,11 @@ const Ping = struct {
                 @panic("todo fixme");
             };
 
-            var leasedBuf = incoming_stream_ptr.recvWithLease() catch {
+            var leasedBuf = incoming_stream_ptr.recvWithLease() catch |err| {
+                if (err == error.StreamClosed) {
+                    return;
+                }
+
                 @panic("todo fixme");
             };
 
@@ -50,7 +54,7 @@ const Ping = struct {
         var i: usize = 10;
         var buf = [_]u8{0} ** ping_size;
 
-        while (i > 0) : (i-=1) {
+        while (i > 0) : (i -= 1) {
             var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
             var start = try std.time.Instant.now();
 
@@ -64,7 +68,7 @@ const Ping = struct {
             // Check that our bytes are the same
             if (std.mem.eql(u8, leasedBuf.buf, buf[0..])) {
                 const dur = (try std.time.Instant.now()).since(start);
-                std.debug.print("Ping took {}. Ping countdown is {}\n", .{dur, i});
+                std.debug.print("Ping took {}. Ping countdown is {}\n", .{ dur, i });
             } else {
                 std.debug.print("Ping packet was incorrect", .{});
             }
@@ -80,7 +84,7 @@ test "ping protocol" {
         libp2p: Libp2p,
 
         fn init(allocator: Allocator, host_key: crypto.ED25519KeyPair) !@This() {
-            const libp2p = try Libp2p.init(allocator, .{.host_key = host_key});
+            const libp2p = try Libp2p.init(allocator, .{ .host_key = host_key });
             return @This(){ .libp2p = libp2p };
         }
 
@@ -88,7 +92,10 @@ test "ping protocol" {
             self.libp2p.deinit(allocator);
         }
 
-        fn start(self: *@This(), waiter: *std.Thread.Semaphore,) !void {
+        fn start(
+            self: *@This(),
+            waiter: *std.Thread.Semaphore,
+        ) !void {
             var libp2p = &self.libp2p;
             try libp2p.handleStream(Ping.id, *MsQuicTransport, self.libp2p.transport, Ping.handler);
             try self.libp2p.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
@@ -102,24 +109,23 @@ test "ping protocol" {
 
     var initiator_key = try crypto.ED25519KeyPair.new();
     defer initiator_key.deinit();
-    var  responder_key = try crypto.ED25519KeyPair.new();
+    var responder_key = try crypto.ED25519KeyPair.new();
     defer responder_key.deinit();
 
     var responder = try Responder.init(allocator, responder_key);
     var waiter = std.Thread.Semaphore{};
     var responder_start_frame = async responder.start(&waiter);
     defer {
-            std.debug.print("\n\n\nWaiting for semaphore\n", .{});
-            waiter.wait();
-            waiter.post();
-            std.debug.print("\ndone waiting\n", .{});
-            await responder_start_frame catch {
-                @panic("Listener failed");
-            };
-
+        std.debug.print("\n\n\nWaiting for semaphore\n", .{});
+        waiter.wait();
+        waiter.post();
+        std.debug.print("\ndone waiting\n", .{});
+        await responder_start_frame catch {
+            @panic("Listener failed");
+        };
     }
 
-    var initator = try Libp2p.init(allocator, .{.host_key = initiator_key});
+    var initator = try Libp2p.init(allocator, .{ .host_key = initiator_key });
     defer initator.deinit(allocator);
 
     waiter.wait();
