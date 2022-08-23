@@ -1,7 +1,5 @@
 # The Zig implementation of the libp2p networking stack
 
-Currently only works on macos with this patch: https://github.com/MarcoPolo/zig/tree/marco/fix-tbd-parser
-
 ## Design principles
 
 1. All swarm code happens on a single thread.
