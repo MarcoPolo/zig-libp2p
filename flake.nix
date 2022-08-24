@@ -67,8 +67,18 @@
             installPhase = ''
               cp -r zig-out $out
             '';
-
           };
+
+        packages.zig-libp2p-fhs = (pkgs.buildFHSUserEnv {
+          name = "code-server-env";
+          targetPkgs = pkgs: (with pkgs;
+            [ glibc ]);
+          multiPkgs = pkgs: (with pkgs;
+            [ glibc ]);
+          runScript = "/usr/bin/bash";
+        });
+
+        devShells.nonNixLinux = self.devShell.${system} // self.packages.${system}.zig-libp2p-fhs.env;
 
         devShell =
           pkgs.mkShell
