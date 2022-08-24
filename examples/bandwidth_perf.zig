@@ -119,7 +119,9 @@ const Responder = struct {
     ) !void {
         var libp2p = &self.libp2p;
         try libp2p.handleStream(BandwidthPerf.id, *MsQuicTransport, self.libp2p.transport, BandwidthPerf.handler);
-        try self.libp2p.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
+        var port = try std.fmt.parseInt(u16, std.os.getenv("PORT") orelse "54321", 10);
+        try self.libp2p.listen(try std.net.Address.resolveIp("127.0.0.1", port));
+        std.debug.print("Listening on 0.0.0.0:{}", .{port});
     }
 };
 
@@ -158,15 +160,26 @@ pub fn main() !void {
         var initator = try Libp2p.init(allocator, .{ .host_key = initiator_key });
         defer initator.deinit(allocator);
 
-        var responder_pub_key = try crypto.ED25519KeyPair.PublicKey.fromPeerIDString(std.os.getenv("RESPONDER_KEY").?);
-
-        var peer = try responder_pub_key.toPeerID();
+        var peer = blk: {
+            var resp_key = std.os.getenv("RESPONDER_KEY");
+            var resp_key_hex = std.os.getenv("RESPONDER_KEY_HEX") orelse "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
+            if (resp_key != null) {
+                var responder_pub_key = try crypto.ED25519KeyPair.PublicKey.fromPeerIDString(resp_key.?);
+                break :blk try responder_pub_key.toPeerID();
+            } else {
+                var key = [_]u8{0} ** 32;
+                var pk = try crypto.ED25519KeyPair.PublicKey.initFromRaw(try std.fmt.hexToBytes(&key, resp_key_hex));
+                break :blk try pk.toPeerID();
+            }
+        };
         std.debug.print("Got peer info", .{});
 
         var byte_size_str = std.os.getenv("BYTE_SIZE") orelse "1048576";
         std.debug.print("Got size: {s}\n\n", .{byte_size_str});
         const byte_size = try std.fmt.parseUnsigned(u32, byte_size_str, 0);
-        try BandwidthPerf.initiateBandwidthPerf(&initator, try std.net.Address.resolveIp("127.0.0.1", 54321), peer, byte_size);
+        var ip = std.os.getenv("RESPONDER_IP") orelse "127.0.0.1";
+        var port = try std.fmt.parseInt(u16, std.os.getenv("RESPONDER_PORT") orelse "54321", 10);
+        try BandwidthPerf.initiateBandwidthPerf(&initator, try std.net.Address.resolveIp(ip, port), peer, byte_size);
     } else {
         @panic("Expected server or client as command");
     }

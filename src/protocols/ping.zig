@@ -135,4 +135,5 @@ test "ping protocol" {
     std.debug.print("Sending data\n\n", .{});
     var peer = try (crypto.ED25519KeyPair.PublicKey{ .key = responder_key.key }).toPeerID();
     try Ping.initiatePing(&initator, try std.net.Address.resolveIp("127.0.0.1", 54321), peer);
+    std.debug.print("xxx here", .{});
 }

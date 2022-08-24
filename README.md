@@ -74,3 +74,46 @@ packetHandlerForID(peer_id, force_new) PacketHandlerHandle
 1. How to know if you should keep a connection alive?
   - After all substreams are closed?
 1. Is "swarm" the preferred term? Should this be called switch instead?
+
+## Examples
+
+All examples assume you have [Nix](https://nixos.org/) installed.
+
+### bandwidth perf
+
+Implements the https://github.com/marten-seemann/libp2p-perf-test protocol.
+
+Build: 
+```
+zig build -Drelease-fast=true bandwidth_perf
+```
+
+#### Server
+
+Run: 
+```
+# Default port of 54321
+./zig-out/bin/bandwidth_perf server
+
+# or set the port
+PORT=8081 ./zig-out/bin/bandwidth_perf server
+```
+
+#### Client
+
+Run: 
+```
+# 20 MiB
+BYTE_SIZE="$((20<<20))" \
+# Get this from the server output above
+RESPONDER_KEY="bafzaajaiaejcb22ear7psi4at6erxa5wcm2kao3mu3gs57zgc4i6khrlfqezp6lu" \
+# Default
+RESPONDER_PORT="54321" \
+# Default
+RESPONDER_IP="127.0.0.1" \
+zig-out/bin/bandwidth_perf client
+```
+
+
+
+

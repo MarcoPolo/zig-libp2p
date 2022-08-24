@@ -362,14 +362,6 @@ pub const Libp2p = struct {
         var ip_addr_with_sentinel = std.meta.assumeSentinel(ip_addr, 0);
 
         std.debug.print("Connecting to |{s}| |{}|\n", .{ ip_addr, dest.getPort() });
-        if (!std.mem.eql(u8, ip_addr, "127.0.0.1")) {
-            std.debug.print("ERRR {s} {s}", .{ ip_addr, "127.0.0.1" });
-            return error.Whoops;
-        }
-        if (54321 != dest.getPort()) {
-            std.debug.print("ERRR {} {}", .{ 54321, dest.getPort() });
-            return error.Whoops2;
-        }
         var conn_handle = try self.transport.startConnection(self.active_conns.allocator, ip_addr_with_sentinel, dest.getPort());
         try active_conns.append(conn_handle);
 

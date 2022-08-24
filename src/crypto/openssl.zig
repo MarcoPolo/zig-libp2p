@@ -392,14 +392,35 @@ pub const ED25519KeyPair = struct {
             }
 
             // +1 for the multibase prefix
-            _ = try no_padding_encoding.decode(buf[0..], peer_id[1..]);
-
-            if (buf[0] != 0x01 or buf[1] != 0x72 or buf[2] != 0x00) {
-                return error.NotProperlyEncoded;
+            var x = try no_padding_encoding.decode(buf[0..], peer_id[1..]);
+            std.debug.print("x is {any}\n", .{x});
+            std.debug.print("peer id is {s}\n", .{peer_id[1..]});
+            std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
+            {
+                var l2 = no_padding_encoding.decodeLen(peer_id[1..].len);
+                var buf2 = buf[0..l2];
+                var x2 = try no_padding_encoding.decode(buf2[0..], peer_id[1..]);
+                std.debug.print("x is {any}\n", .{x2});
+                std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf2[0..])});
             }
 
-            // The key should be written starting at the 5th byte
-            var key = try Key.deserializePb(buf[4..]);
+            var bufToDecode: []const u8 = undefined;
+            if (buf[0] == 0x08) {
+                // raw pb
+                // bufToDecode = buf[0..];
+
+                // Hack, the above wasn't working with go-libp2p. Need to look into this
+                std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
+                return try ED25519KeyPair.PublicKey.initFromRaw(buf[4..]);
+            } else if (buf[0] != 0x01 or buf[1] != 0x72 or buf[2] != 0x00) {
+                std.debug.print("Header bytes are: {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..4])});
+                return error.NotProperlyEncoded;
+            } else {
+                // The key should be read starting at the 5th byte to remove the cid/multicodec/multihash
+                bufToDecode = buf[4..];
+            }
+
+            var key = try Key.deserializePb(bufToDecode);
             return try ED25519KeyPair.PublicKey.initFromKey(key);
         }
 
@@ -446,7 +467,7 @@ pub const ED25519KeyPair = struct {
             return true;
         }
 
-        fn initFromRaw(k: []const u8) !PublicKey {
+        pub fn initFromRaw(k: []const u8) !PublicKey {
             var key = c.EVP_PKEY_new_raw_public_key(c.EVP_PKEY_ED25519, null, k.ptr, k.len);
             if (key == null) {
                 return error.InitPubKeyFailed;
@@ -797,6 +818,7 @@ pub const Key = union(KeyType) {
             } else if (field_num == 2 and field_val == .bytes) {
                 key_bytes = field_val.bytes;
             } else {
+                std.debug.print("Field num is {} and field_val is {any}", .{ field_num, field_val });
                 return error.UnknownPB;
             }
         }
@@ -1125,4 +1147,23 @@ test "Round trip peer id" {
     const p2 = try kp2.toPeerIDString();
 
     try std.testing.expectEqualSlices(u8, p[0..], p2[0..]);
+}
+
+test "base32 encoding" {
+    const s = "080112208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f01";
+    // const base32 = @import("base32");
+    // const encoding = base32.std_encoding;
+    const encoding = no_padding_encoding;
+    var buf = [_]u8{0} ** (s.len / 2);
+    const encoded_len = comptime encoding.encodeLen(buf.len);
+    const decoded_len = comptime encoding.decodeLen(encoded_len);
+    var roundtrip_buf = [_]u8{0} ** decoded_len;
+    _ = try std.fmt.hexToBytes(&buf, "080112208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f01");
+    var buf_encoded = [_]u8{0} ** encoded_len;
+    _ = encoding.encode(&buf_encoded, buf[0..]);
+    std.debug.print("decoded len is {}\n\n", .{decoded_len});
+    std.debug.print("Encoded is {s}\n\n", .{buf_encoded});
+
+    _ = try encoding.decode(roundtrip_buf[0..], buf_encoded[0..]);
+    try std.testing.expectEqualSlices(u8, buf[0..], roundtrip_buf[0..buf.len]);
 }
