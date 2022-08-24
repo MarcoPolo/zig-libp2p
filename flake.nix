@@ -38,6 +38,37 @@
           '';
           XDG_CACHE_HOME = ".cache";
         };
+        packages.bandwidthPerf = pkgs.stdenv.mkDerivation
+          {
+            name = "bandwidthPerf";
+            src = ./.;
+            buildInputs = [
+              zig
+              openssl
+            ]
+            ++ (if pkgs.stdenv.isDarwin
+            then
+              (with pkgs.darwin.apple_sdk.frameworks;
+              [ Security Foundation ])
+            else [ ]);
+            LIBSYSTEM_INCLUDE = (if pkgs.stdenv.isDarwin then
+              "${pkgs.darwin.Libsystem.outPath}/include" else "");
+            PB_INCLUDE = "${pkgs.protobufc}/include";
+            LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
+            LIB_OPENSSL = "${openssl.dev}";
+            ZIG_DEPS = "${zig-deps.depsJson}";
+            buildPhase = ''
+              # build_dir=$(mktemp -d)
+              # cp -r . $build_dir
+              # cd $build_dir
+              export HOME=$PWD
+              ${zig}/bin/zig build bandwidth_perf
+            '';
+            installPhase = ''
+              cp -r zig-out $out
+            '';
+
+          };
 
         devShell =
           pkgs.mkShell
