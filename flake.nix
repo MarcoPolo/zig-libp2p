@@ -29,7 +29,10 @@
             sha256 = "sha256-MVo21qNCZop/HXBqrPcosGbRY+W69KNCc1DfnH47GsI=";
             # sha256 = pkgs.lib.fakeSha256;
           };
-          nativeBuildInputs = [ deps.zig ];
+          nativeBuildInputs = [
+            deps.zig
+            pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+          ];
           dontConfigure = true;
           dontInstall = true;
           buildPhase = ''
@@ -42,6 +45,9 @@
           {
             name = "bandwidthPerf";
             src = ./.;
+            nativeBuildInputs = [
+              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+            ];
             buildInputs = [
               zig
               openssl
