@@ -91,7 +91,7 @@
             rec {
               buildInputs = [
                 zig
-                self.packages.${system}.zls
+                # self.packages.${system}.zls
                 openssl
                 pkgs.pkg-config
                 pkgs.protobufc

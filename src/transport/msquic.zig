@@ -449,8 +449,6 @@ pub const MsQuicTransport = struct {
                     .reserved = 0,
                 }, .And);
 
-                std.debug.print("debug: here {any}\n", .{prev_state});
-
                 if (prev_state.msquic_pending) {
                     // We hit a suspend before releasing. So now we're in charge
                     // of telling msquic we are done with this buffer.
@@ -565,7 +563,6 @@ pub const MsQuicTransport = struct {
                     return SendError.StreamClosed;
                 }
             }
-            std.debug.print("Send: Stream handle:{*}\n", .{self.msquic_stream_handle});
             var lock = std.event.Lock.initLocked();
 
             // Hack to keep buf as const! (unsafe)
@@ -640,8 +637,7 @@ pub const MsQuicTransport = struct {
                 }
 
                 suspend {}
-                // std.debug.print("Recv: {any}\n", .{recv_frame.data.leased_buf.state});
-                std.debug.print("Resume recv\n", .{});
+                // std.debug.print("Resume recv\n", .{});
                 if (recv_frame.data.leased_buf.state.stream_closed) {
                     return error.StreamClosed;
                 }
@@ -729,7 +725,6 @@ pub const MsQuicTransport = struct {
                     MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
                         // A previous StreamSend call has completed, and the context is being
                         // returned back to the app.
-                        std.debug.print("strm={any} data sent\n", .{msquic_stream});
 
                         if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |client_context| {
                             const lock = @ptrCast(*Lock, @alignCast(@alignOf(Lock), client_context));
@@ -763,9 +758,9 @@ pub const MsQuicTransport = struct {
 
                                 const slice = buf.Buffer[0..buf.Length];
                                 recv_frame.data.leased_buf = LeasedBuffer{ .buf = slice, .state = .{ .active_lease = true } };
-                                std.debug.print("In stream callback. Buf len is {}. Frame is {any}\n", .{ slice.len, &recv_frame.data.frame });
+                                // std.debug.print("In stream callback. Buf len is {}. Frame is {any}\n", .{ slice.len, &recv_frame.data.frame });
                                 resume recv_frame.data.frame;
-                                std.debug.print("done resuming stream callback. Buf len is {}. Frame is {any}\n", .{ slice.len, &recv_frame.data.frame });
+                                // std.debug.print("done resuming stream callback. Buf len is {}. Frame is {any}\n", .{ slice.len, &recv_frame.data.frame });
 
                                 const prev_state = recv_frame.data.leased_buf.atomicStateUpdate(LeasedBuffer.LeasedBufferState{
                                     .active_lease = false,
@@ -796,7 +791,7 @@ pub const MsQuicTransport = struct {
                                     recv_frame.data.frame = undefined;
                                     stream_ptr.recv_frame_buffer.put(recv_frame);
 
-                                    std.debug.print("recv consumed {} out of {}\n", .{ bytes_consumed, buf.Length });
+                                    // std.debug.print("recv consumed {} out of {}\n", .{ bytes_consumed, buf.Length });
 
                                     if (bytes_consumed < buf.Length) {
                                         // Didn't read the whole thing.

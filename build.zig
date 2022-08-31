@@ -271,8 +271,24 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     bandwidth_perf.addIncludeDir("src/workaround");
     const bandwidth_perf_server_step = b.step("bandwidth_perf", "Build bandwidth perf");
-    bandwidth_perf_server_step.dependOn(&bandwidth_perf.step);
-    bandwidth_perf_server_step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
+
+    // bandwidth_perf_server_step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
+    const os = target.os_tag orelse builtin.os.tag;
+    if (os == .linux) {
+        var nix_cc = std.os.getenv("NIX_CC").?;
+        var dynamic_linker_ptr = try std.fs.path.join(allocator, &[_][]const u8{ nix_cc, "/nix-support/dynamic-linker" });
+        const dynamic_linker_path = try b.exec(&[_][]const u8{ "cat", dynamic_linker_ptr });
+        std.debug.print("{s}\n", .{dynamic_linker_path});
+
+        const args = [_][]const u8{
+            "patchelf", "--set-interpreter", dynamic_linker_path[0 .. dynamic_linker_path.len - 1], "zig-out/bin/bandwidth_perf",
+        };
+        const patch = b.addSystemCommand(&args);
+        patch.step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
+        bandwidth_perf_server_step.dependOn(&patch.step);
+    } else {
+        bandwidth_perf_server_step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
+    }
 
     // end libp2p examples
 

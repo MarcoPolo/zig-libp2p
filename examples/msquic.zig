@@ -195,7 +195,7 @@ const ClientCallback = struct {
             MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
                 // A previous StreamSend call has completed, and the context is being
                 // returned back to the app.
-                std.debug.print("strm={any} data sent\n", .{stream});
+                // std.debug.print("strm={any} data sent\n", .{stream});
                 if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |client_context| {
                     const T = SendBuffer(send_buffer_size);
                     const send_buffer = @ptrCast(*T, @alignCast(@alignOf(T), client_context));
@@ -314,7 +314,7 @@ const ServerCallback = struct {
             MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
                 // A previous StreamSend call has completed, and the context is being
                 // returned back to the app.
-                std.debug.print("strm={any} data sent\n", .{stream});
+                // std.debug.print("strm={any} data sent\n", .{stream});
                 if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |client_context| {
                     const T = SendBuffer(send_buffer_size);
                     const send_buffer = @ptrCast(*T, @alignCast(@alignOf(T), client_context));
@@ -525,7 +525,7 @@ const alpn = MsQuic.QUIC_BUFFER{
 fn loadServerConfig(msquic: *MsQuic.QUIC_API_TABLE, registration: *MsQuic.HQUIC) !MsQuic.HQUIC {
     var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
-    settings.IdleTimeoutMs = 5000;
+    settings.IdleTimeoutMs = 1000;
     settings.IsSet.IdleTimeoutMs = true;
 
     // Configures the server's resumption level to allow for resumption and

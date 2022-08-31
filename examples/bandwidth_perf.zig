@@ -46,6 +46,7 @@ const BandwidthPerf = struct {
             };
             incoming_stream_ptr.resetFlags();
         }
+        random.bytes(buf1[0..]);
 
         while (true) {
             var incoming_stream_ptr = transport.stream_system.handle_allocator.getPtr(stream) catch |err| {
@@ -57,7 +58,6 @@ const BandwidthPerf = struct {
                 std.debug.print("Err: {}. {}\n\n", .{ err, @typeInfo(@TypeOf(err)) });
                 @panic("todo fixme 2");
             };
-            random.bytes(buf1[0..]);
 
             _ = incoming_stream_ptr.send(buf1[0..]) catch |err| {
                 std.debug.print("Err: {}. Stream closed ?", .{err});
@@ -75,8 +75,6 @@ const BandwidthPerf = struct {
 
         while (recvd < byte_size) {
             var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-
-            std.debug.print("waiting for data\n\n", .{});
 
             // TODO return error when the stream is closed
             var leased_buf = try stream_ptr.recvWithLease();
