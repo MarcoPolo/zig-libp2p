@@ -149,7 +149,6 @@ pub const MsQuicTransport = struct {
                         std.debug.print("conn={any} Failed to parse peer certificate: {any}\n", .{ connection, err });
                         return MsQuic.QuicStatus.InternalError;
                     };
-                    _ = peer_x509;
                     defer peer_x509.deinit();
 
                     var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509, self.transport.allocator) catch |err| {

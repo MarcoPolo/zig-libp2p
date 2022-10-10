@@ -1,4 +1,6 @@
 const std = @import("std");
+const SyncChannel = @import("./channel.zig").SyncChannel;
+const AsyncChannel = @import("./channel.zig").AsyncChannel;
 
 fn Pipe(comptime Context: type) type {
     return struct {
@@ -293,6 +295,40 @@ test "benchmark pipe" {
             &([_]u8{ 1, 2, 3 } ** 128),
             &([_]u8{ 1, 2, 3 } ** 256),
         };
+
+        // crashes
+        // pub fn publishAndConsumeChannel(items: []const u8) !void {
+        //     const Channel = std.event.Channel(u8);
+        //     var channel: Channel = undefined;
+        //     var buf = ([_]u8{0} ** (1 << 3));
+
+        //     channel.init(&buf);
+        //     for (items) |item| {
+        //         channel.put(item);
+
+        //         _ = await async channel.get();
+        //     }
+        // }
+
+        pub fn publishAndConsumeSyncChannel(items: []const u8) !void {
+            var c = SyncChannel(u8){};
+            for (items) |item| {
+                nosuspend {
+                    var send_frame = async c.send(item, true);
+                    _ = async c.send(item, true);
+                    _ = c.recv(true);
+                    _ = await send_frame;
+                }
+            }
+        }
+
+        pub fn publishAndConsumeAsyncChannel(items: []const u8) !void {
+            var c = AsyncChannel(u8, 2){};
+            for (items) |item| {
+                _ = c.try_send(item);
+                _ = c.try_recv().?;
+            }
+        }
 
         pub fn publishAndConsume(items: []const u8) !void {
             var allocator = std.testing.allocator;

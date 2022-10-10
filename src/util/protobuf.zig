@@ -1,6 +1,6 @@
 // copied partly from https://github.com/Arwalk/zig-protobuf/blob/master/src/protobuf.zig
 const std = @import("std");
-const StructField = std.builtin.TypeInfo.StructField;
+const StructField = std.builtin.Type.StructField;
 const isSignedInt = std.meta.trait.isSignedInt;
 const isIntegral = std.meta.trait.isIntegral;
 const Allocator = std.mem.Allocator;

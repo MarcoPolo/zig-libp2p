@@ -77,22 +77,27 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
 
 fn linkQuiche(l: anytype) void {
     // TODO get this from somewhere else
-    l.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
-    l.addIncludeDir("/Users/marco/code/quiche/quiche/include");
-    l.addLibPath("/Users/marco/code/quiche/target/release");
+    l.addIncludePath("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
+    l.addIncludePath("/Users/marco/code/quiche/quiche/include");
+    l.addLibraryPath("/Users/marco/code/quiche/target/release");
     l.linkSystemLibraryName("quiche");
     l.linkLibC();
 }
 
 fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
+    l.addIncludePath(vars.get("LIBSYSTEM_INCLUDE").?);
+}
+
+fn includeLibSystemFromNix2(allocator: Allocator, l: *std.build.TranslateCStep) anyerror!void {
+    var vars = try std.process.getEnvMap(allocator);
     l.addIncludeDir(vars.get("LIBSYSTEM_INCLUDE").?);
 }
 
 fn includeProtobuf(allocator: Allocator, l: anytype) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
-    l.addIncludeDir(vars.get("PB_INCLUDE").?);
-    l.addIncludeDir("./pb");
+    l.addIncludePath(vars.get("PB_INCLUDE").?);
+    l.addIncludePath("./pb");
 }
 
 fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerror!void {
@@ -100,8 +105,8 @@ fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerr
 
     const openssl_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/lib" });
     const openssl_inc_path = try std.fs.path.join(allocator, &.{ vars.get("LIB_OPENSSL").?, "/include" });
-    l.addLibPath(openssl_path);
-    l.addIncludeDir(openssl_inc_path);
+    l.addLibraryPath(openssl_path);
+    l.addIncludePath(openssl_inc_path);
 
     l.linkSystemLibraryName("ssl");
     l.linkSystemLibraryName("crypto");
@@ -112,7 +117,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
     const msquic_dir = vars.get("LIB_MSQUIC").?;
 
-    l.addLibPath(try std.fs.path.join(allocator, &.{
+    l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,
         "src/inc",
     }));
@@ -146,12 +151,12 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
             @panic("untested arch. fixme :)");
         },
     };
-
     // Debug to catch issues
     // const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
+    // std.debug.print("{any}_\n", .{arch_str});
     const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
 
-    l.addLibPath(try std.fs.path.join(allocator, &.{
+    l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,
         "artifacts/bin",
         libmsquic_os_path,
@@ -169,7 +174,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     while (frameworks_in_nix_cflags.next()) |val| {
         if (next_is_framework) {
             // std.debug.print("nix framework paths: {s}\n", .{val});
-            l.addFrameworkDir(val);
+            l.addFrameworkPath(val);
         }
         next_is_framework = std.mem.eql(u8, val, "-iframework");
     }
@@ -245,7 +250,8 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     // libp2p_tests.filter = "Deserialize Public Key proto";
     try linkMsquic(allocator, target, libp2p_tests);
     try includeLibSystemFromNix(allocator, libp2p_tests);
-    libp2p_tests.addIncludeDir("src/workaround");
+    libp2p_tests.addLibraryPath("src/workaround");
+    // libp2p_tests.single_threaded = true;
     const libp2p_tests_step = b.step("libp2p_tests", "Run libp2p tests");
     libp2p_tests_step.dependOn(&libp2p_tests.step);
 
@@ -269,7 +275,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     try linkMsquic(allocator, target, bandwidth_perf);
     try includeLibSystemFromNix(allocator, bandwidth_perf);
 
-    bandwidth_perf.addIncludeDir("src/workaround");
+    bandwidth_perf.addIncludePath("src/workaround");
     const bandwidth_perf_server_step = b.step("bandwidth_perf", "Build bandwidth perf");
 
     // bandwidth_perf_server_step.dependOn(&b.addInstallArtifact(bandwidth_perf).step);
@@ -316,7 +322,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     protobuf_example_step.dependOn(&b.addInstallArtifact(protobuf_example).step);
 
     const msquic_zig = b.addTranslateC(.{ .path = "./msquic/src/inc/msquic.h" });
-    try includeLibSystemFromNix(allocator, msquic_zig);
+    try includeLibSystemFromNix2(allocator, msquic_zig);
     msquic_zig.addIncludeDir("./msquic/src/inc/");
     const msquic_zig_step = b.step("msquicZig", "Build Zig wrapper around msquic api");
     const f: std.build.FileSource = .{ .generated = &msquic_zig.output_file };
@@ -342,9 +348,9 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const main_tests = b.addTest("src/main.zig");
     main_tests.setBuildMode(mode);
 
-    main_tests.addIncludeDir("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
-    main_tests.addIncludeDir("/Users/marco/code/quiche/quiche/include");
-    main_tests.addLibPath("/Users/marco/code/quiche/target/release");
+    main_tests.addIncludePath("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
+    main_tests.addIncludePath("/Users/marco/code/quiche/quiche/include");
+    main_tests.addLibraryPath("/Users/marco/code/quiche/target/release");
     main_tests.linkSystemLibraryName("quiche");
     main_tests.linkLibC();
 

@@ -408,6 +408,7 @@ test {
     _ = @import("./crypto.zig");
     _ = @import("./multistream_select.zig");
     _ = @import("./util/pipe.zig");
+    _ = @import("./util/channel.zig");
 
     // Protocols
     _ = @import("./protocols/ping.zig");
@@ -526,9 +527,6 @@ test "e2e hello" {
                 @panic("Failed to allocate");
             };
             frame.* = async handleHelloAsync(l_transport, stream);
-
-            _ = l_transport;
-            _ = stream;
         }
     };
 
@@ -561,7 +559,6 @@ test "e2e hello" {
 
     waiter.wait();
     var stream_handle = try libp2p.newStream(try std.net.Address.resolveIp("127.0.0.1", 54321), peer, "hello");
-    _ = stream_handle;
 
     var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
     std.debug.print("Sending data\n\n", .{});

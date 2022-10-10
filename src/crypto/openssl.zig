@@ -934,7 +934,6 @@ pub const Libp2pTLSCert = struct {
 
         var host_pubkey_bytes = try allocator.alloc(u8, octet_str_len);
         std.mem.copy(u8, host_pubkey_bytes, octet_str_slice);
-        _ = octet_str_slice;
         std.debug.print("here3 {any} {*} {*} {*}\n", .{ octet_str_ptr, buffer.ptr, buffer.ptr + buffer.len, buffer[1..].ptr });
 
         var maybe_octet_str_2 = c.sk_ASN1_TYPE_shift(seq);
