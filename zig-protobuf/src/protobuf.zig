@@ -1,5 +1,5 @@
 const std = @import("std");
-const StructField = std.builtin.TypeInfo.StructField;
+const StructField = std.builtin.Type.StructField;
 const isSignedInt = std.meta.trait.isSignedInt;
 const isIntegral = std.meta.trait.isIntegral;
 const Allocator = std.mem.Allocator;
@@ -139,7 +139,7 @@ fn insert_raw_varint(pb: *ArrayList(u8), size: u64, start_index: usize) !void {
     }
 }
 
-/// Appends a varint to the pb array. 
+/// Appends a varint to the pb array.
 /// Mostly does the required transformations to use append_raw_varint
 /// after making the value some kind of unsigned value.
 fn append_as_varint(pb: *ArrayList(u8), value: anytype, comptime varint_type: VarintType) !void {
@@ -250,7 +250,7 @@ fn append_list_of_submessages(pb: *ArrayList(u8), value_list: anytype) !void {
     try insert_raw_varint(pb, size_encoded, len_index);
 }
 
-/// calculates the comptime value of (tag_index << 3) + wire type. 
+/// calculates the comptime value of (tag_index << 3) + wire type.
 /// This is fully calculated at comptime which is great.
 fn get_full_tag_value(comptime field: FieldDescriptor, comptime value_type: type) ?u32 {
     return if (field.tag) |tag| ((tag << 3) | field.ftype.get_wirevalue(value_type)) else null;
@@ -314,7 +314,7 @@ fn append_map(pb: *ArrayList(u8), comptime field: FieldDescriptor, map: anytype)
 }
 
 /// Appends a value to the pb buffer. Starts by appending the tag, then a comptime switch
-/// routes the code to the correct type of data to append. 
+/// routes the code to the correct type of data to append.
 fn append(pb: *ArrayList(u8), comptime field: FieldDescriptor, value_type: type, value: anytype) !void {
     try append_tag(pb, field, value_type);
     switch (field.ftype) {
