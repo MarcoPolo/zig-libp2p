@@ -31,7 +31,15 @@ pub fn SyncChannel(comptime T: type) type {
         sendq: SinglyLinkedList(Sender(T)) = .{},
         recvq: SinglyLinkedList(Receiver(T)) = .{},
 
-        pub fn send(self: *@This(), val: T, block: bool) bool {
+        pub fn try_send(self: *@This(), val: T) bool {
+            return self.send_impl(val, false);
+        }
+
+        pub fn send(self: *@This(), val: T) void {
+            _ = self.send_impl(val, true);
+        }
+
+        fn send_impl(self: *@This(), val: T, block: bool) bool {
             if (self.closed) {
                 // Fast path
                 @panic("send on closed");
@@ -86,7 +94,14 @@ pub fn SyncChannel(comptime T: type) type {
             return true;
         }
 
-        pub fn recv(self: *@This(), block: bool) ?T {
+        pub fn try_recv(self: *@This()) ?T {
+            return self.recv_impl(false);
+        }
+        pub fn recv(self: *@This()) T {
+            return self.recv_impl(true).?;
+        }
+
+        fn recv_impl(self: *@This(), block: bool) ?T {
             if (self.closed) {
                 // Fast path
                 @panic("recv on closed");
@@ -461,19 +476,19 @@ test "Sync channel" {
         var c = SyncChannel(u8){};
 
         // No blocking, no problems
-        try expect(!c.send(1, false));
-        try expect(c.recv(false) == null);
+        try expect(!c.try_send(1));
+        try expect(c.try_recv() == null);
 
         // Send first
-        var send_frame = async c.send(1, true);
-        var val = c.recv(true);
-        try expect(val.? == 1);
-        try expect(await send_frame);
+        var send_frame = async c.send(1);
+        var val = c.recv();
+        try expect(val == 1);
+        await send_frame;
 
         // Recv first
-        var recv_frame = async c.recv(true);
-        try expect(c.send(2, true));
-        try expect((await recv_frame).? == 2);
+        var recv_frame = async c.recv();
+        c.send(2);
+        try expect((await recv_frame) == 2);
     }
 }
 
