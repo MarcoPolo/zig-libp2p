@@ -6270,8 +6270,6 @@ pub const QuicStatus = struct {
     const Expired = certError(1); // 0xBEBC401
     const UntrustedRoot = certError(2); // 0xBEBC402
 
-    // foo: c_uint,
-
     pub inline fn isError(status: c_uint) bool {
         const s = @bitCast(c_int, status);
         if (s > 0) {
