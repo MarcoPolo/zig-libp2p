@@ -182,3 +182,7 @@ pub fn main() !void {
         @panic("Expected server or client as command");
     }
 }
+
+// Example usage:
+// RESPONDER_PORT=4001 RESPONDER_IP="linode-us.seemann.io" RESPONDER_PORT=4001 BYTE_SIZE="$((200<<20))" RESPONDER_HEX_KEY="8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c" zig-out/bin/bandwidth_perf client
+// SECRET_KEY="bvz3ygasaqlkp54tdifjtpu3sfziozgcnyljbxiu7d26e2tseoqnq" zig-out/bin/bandwidth_perf server
