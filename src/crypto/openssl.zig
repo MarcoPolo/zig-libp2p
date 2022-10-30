@@ -683,7 +683,6 @@ pub const OpenSSLKey = struct {
         var out_slice: []u8 = out[libp2p_tls_handshake_prefix.len..];
         var out_ptr: ?[*]u8 = out_slice.ptr;
         const len = c.i2d_PUBKEY(self.key, &out_ptr);
-        std.debug.print("Len was {} expected {}\n", .{ len, DER_encoded_len });
         std.debug.assert(len == DER_encoded_len);
 
         return out;

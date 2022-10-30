@@ -184,6 +184,17 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     l.linkFramework("CoreFoundation");
 }
 
+fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: std.builtin.Mode, test_filter: []const u8) !void {
+    const tests = b.addTest("src/crypto.zig");
+    tests.setBuildMode(mode);
+    // Handle reading zig-deps.nix output
+    try addZigDeps(allocator, tests);
+    tests.filter = test_filter;
+    try linkOpenssl(allocator, tests);
+    const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
+    tests_step.dependOn(&tests.step);
+}
+
 pub fn build(b: *std.build.Builder) anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -230,6 +241,10 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     libp2p_tests.setBuildMode(mode);
     libp2p_tests.test_evented_io = true;
 
+    const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+
+    try addCryptoTestStep(allocator, b, mode, test_filter);
+
     // const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
     // const test_cases_options = b.addOptions();
     // libp2p_tests.addOptions("test_options", test_cases_options);
@@ -240,7 +255,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     // var vars = try std.process.getEnvMap(allocator);
     // libp2p_tests.filter = vars.get("TEST_FILTER") orelse "";
-    libp2p_tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+    libp2p_tests.filter = test_filter;
 
     // Handle reading zig-deps.nix output
     try addZigDeps(allocator, libp2p_tests);
