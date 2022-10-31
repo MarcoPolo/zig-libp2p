@@ -29,7 +29,7 @@ const ThroughputClient = struct {
         use_send_buffering: bool = true,
         // download_length: u64 = 0x2fffffff,
         download_length: u64 = 0,
-        upload_length: u64 = 0x1fffffff,
+        upload_length: u64 = 0x5fffffff,
         // upload_length: u64 = 0,
         io_size: u32 = 0x10000,
 
@@ -157,6 +157,17 @@ const ThroughputClient = struct {
             self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
         }
 
+        if (!self.settings.use_send_buffering) {
+            var settings = std.mem.zeroes(MsQuic.QuicSettings);
+            settings.bitfields.SendBufferingEnabled = false;
+            settings.IsSet.flags.SendBufferingEnabled = true;
+            const status = self.msquic.SetParam.?(conn, MsQuic.QUIC_PARAM_CONN_SETTINGS, @sizeOf(@TypeOf(settings)), &settings);
+            if (QuicStatus.isError(status)) {
+                std.debug.print("MsQuic->SetParam (CONN_SETTINGS) failed! {}\n", .{status});
+                return error.FailedToSetParam;
+            }
+        }
+
         var stream_context = try self.allocator.create(StreamContext);
         stream_context.* = StreamContext{
             .client = self,
@@ -178,17 +189,11 @@ const ThroughputClient = struct {
             return error.StreamOpenFailed;
         }
 
-        // try self.streams.append(stream_context);
-        // errdefer {
-        // _ = self.streams.pop();
-        // }
-
         status = self.msquic.StreamStart.?(stream_context.handle, MsQuic.QUIC_STREAM_START_FLAG_NONE);
         if (MsQuic.QuicStatus.isError(status)) {
             return error.StreamStartFailed;
         }
 
-        //
         if (self.settings.download_length > 0) {
             // Download only, close send side
             _ = self.msquic.StreamSend.?(
@@ -263,7 +268,6 @@ const ThroughputClient = struct {
     };
 
     fn streamCallback(self: *@This(), stream: MsQuic.HQUIC, stream_context: *StreamContext, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) MsQuic.QUIC_STATUS {
-        // std.debug.print("stream event: from={any} {}\n", .{ stream, event.*.Type });
         switch (event.*.Type) {
             MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
                 stream_context.bytes_completed += event.*.unnamed_0.RECEIVE.TotalBufferLength;
@@ -358,7 +362,7 @@ test "throughputclient" {
     const allocator = std.testing.allocator;
 
     std.debug.print("\n", .{});
-    var c = try ThroughputClient.init(allocator, .{});
+    var c = try ThroughputClient.init(allocator, .{ .use_send_buffering = false });
     defer c.deinit();
 
     try c.start();
