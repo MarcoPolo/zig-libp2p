@@ -47,6 +47,11 @@ pub const __builtin_inff = @import("std").zig.c_builtins.__builtin_inff;
 pub const __builtin_isnan = @import("std").zig.c_builtins.__builtin_isnan;
 pub const __builtin_isinf = @import("std").zig.c_builtins.__builtin_isinf;
 pub const __builtin_isinf_sign = @import("std").zig.c_builtins.__builtin_isinf_sign;
+pub const __has_builtin = @import("std").zig.c_builtins.__has_builtin;
+pub const __builtin_assume = @import("std").zig.c_builtins.__builtin_assume;
+pub const __builtin_unreachable = @import("std").zig.c_builtins.__builtin_unreachable;
+pub const __builtin_constant_p = @import("std").zig.c_builtins.__builtin_constant_p;
+pub const __builtin_mul_overflow = @import("std").zig.c_builtins.__builtin_mul_overflow;
 pub const __int8_t = i8;
 pub const __uint8_t = u8;
 pub const __int16_t = c_short;
@@ -95,7 +100,7 @@ pub const __darwin_useconds_t = __uint32_t;
 pub const __darwin_uuid_t = [16]u8;
 pub const __darwin_uuid_string_t = [37]u8;
 pub const struct___darwin_pthread_handler_rec = extern struct {
-    __routine: ?fn (?*anyopaque) callconv(.C) void,
+    __routine: ?*const fn (?*anyopaque) callconv(.C) void,
     __arg: ?*anyopaque,
     __next: [*c]struct___darwin_pthread_handler_rec,
 };
@@ -279,7 +284,7 @@ pub const struct_sigevent = extern struct {
     sigev_notify: c_int,
     sigev_signo: c_int,
     sigev_value: union_sigval,
-    sigev_notify_function: ?fn (union_sigval) callconv(.C) void,
+    sigev_notify_function: ?*const fn (union_sigval) callconv(.C) void,
     sigev_notify_attributes: [*c]pthread_attr_t,
 };
 pub const struct___siginfo = extern struct {
@@ -296,12 +301,12 @@ pub const struct___siginfo = extern struct {
 };
 pub const siginfo_t = struct___siginfo;
 pub const union___sigaction_u = extern union {
-    __sa_handler: ?fn (c_int) callconv(.C) void,
-    __sa_sigaction: ?fn (c_int, [*c]struct___siginfo, ?*anyopaque) callconv(.C) void,
+    __sa_handler: ?*const fn (c_int) callconv(.C) void,
+    __sa_sigaction: ?*const fn (c_int, [*c]struct___siginfo, ?*anyopaque) callconv(.C) void,
 };
 pub const struct___sigaction = extern struct {
     __sigaction_u: union___sigaction_u,
-    sa_tramp: ?fn (?*anyopaque, c_int, c_int, [*c]siginfo_t, ?*anyopaque) callconv(.C) void,
+    sa_tramp: ?*const fn (?*anyopaque, c_int, c_int, [*c]siginfo_t, ?*anyopaque) callconv(.C) void,
     sa_mask: sigset_t,
     sa_flags: c_int,
 };
@@ -310,9 +315,9 @@ pub const struct_sigaction = extern struct {
     sa_mask: sigset_t,
     sa_flags: c_int,
 };
-pub const sig_t = ?fn (c_int) callconv(.C) void;
+pub const sig_t = ?*const fn (c_int) callconv(.C) void;
 pub const struct_sigvec = extern struct {
-    sv_handler: ?fn (c_int) callconv(.C) void,
+    sv_handler: ?*const fn (c_int) callconv(.C) void,
     sv_mask: c_int,
     sv_flags: c_int,
 };
@@ -320,7 +325,7 @@ pub const struct_sigstack = extern struct {
     ss_sp: [*c]u8,
     ss_onstack: c_int,
 };
-pub extern fn signal(c_int, ?fn (c_int) callconv(.C) void) ?fn (c_int) callconv(.C) void;
+pub extern fn signal(c_int, ?*const fn (c_int) callconv(.C) void) ?*const fn (c_int) callconv(.C) void;
 pub const int_least8_t = i8;
 pub const int_least16_t = i16;
 pub const int_least32_t = i32;
@@ -552,14 +557,14 @@ pub fn _OSSwapInt64(arg__data: u64) callconv(.C) u64 {
     var _data = arg__data;
     return __builtin_bswap64(_data);
 }
-pub const struct__OSUnalignedU16 = packed struct {
-    __val: u16,
+pub const struct__OSUnalignedU16 = extern struct {
+    __val: u16 align(1),
 };
-pub const struct__OSUnalignedU32 = packed struct {
-    __val: u32,
+pub const struct__OSUnalignedU32 = extern struct {
+    __val: u32 align(1),
 };
-pub const struct__OSUnalignedU64 = packed struct {
-    __val: u64,
+pub const struct__OSUnalignedU64 = extern struct {
+    __val: u64 align(1),
 };
 pub fn OSReadSwapInt16(arg__base: ?*const volatile anyopaque, arg__offset: usize) callconv(.C) u16 {
     var _base = arg__base;
@@ -632,12 +637,12 @@ pub extern fn aligned_alloc(__alignment: c_ulong, __size: c_ulong) ?*anyopaque;
 pub extern fn posix_memalign(__memptr: [*c]?*anyopaque, __alignment: usize, __size: usize) c_int;
 pub extern fn abort() noreturn;
 pub extern fn abs(c_int) c_int;
-pub extern fn atexit(?fn () callconv(.C) void) c_int;
+pub extern fn atexit(?*const fn () callconv(.C) void) c_int;
 pub extern fn atof([*c]const u8) f64;
 pub extern fn atoi([*c]const u8) c_int;
 pub extern fn atol([*c]const u8) c_long;
 pub extern fn atoll([*c]const u8) c_longlong;
-pub extern fn bsearch(__key: ?*const anyopaque, __base: ?*const anyopaque, __nel: usize, __width: usize, __compar: ?fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) ?*anyopaque;
+pub extern fn bsearch(__key: ?*const anyopaque, __base: ?*const anyopaque, __nel: usize, __width: usize, __compar: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) ?*anyopaque;
 pub extern fn div(c_int, c_int) div_t;
 pub extern fn exit(c_int) noreturn;
 pub extern fn getenv([*c]const u8) [*c]u8;
@@ -648,7 +653,7 @@ pub extern fn lldiv(c_longlong, c_longlong) lldiv_t;
 pub extern fn mblen(__s: [*c]const u8, __n: usize) c_int;
 pub extern fn mbstowcs(noalias [*c]wchar_t, noalias [*c]const u8, usize) usize;
 pub extern fn mbtowc(noalias [*c]wchar_t, noalias [*c]const u8, usize) c_int;
-pub extern fn qsort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void;
+pub extern fn qsort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void;
 pub extern fn rand() c_int;
 pub extern fn srand(c_uint) void;
 pub extern fn strtod([*c]const u8, [*c][*c]u8) f64;
@@ -721,15 +726,15 @@ pub extern fn getbsize([*c]c_int, [*c]c_long) [*c]u8;
 pub extern fn getloadavg([*c]f64, c_int) c_int;
 pub extern fn getprogname() [*c]const u8;
 pub extern fn setprogname([*c]const u8) void;
-pub extern fn heapsort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) c_int; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:312:6: warning: unsupported type: 'BlockPointer'
+pub extern fn heapsort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) c_int; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:312:6: warning: unsupported type: 'BlockPointer'
 pub const heapsort_b = @compileError("unable to resolve prototype of function"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:312:6
-pub extern fn mergesort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) c_int; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:319:6: warning: unsupported type: 'BlockPointer'
+pub extern fn mergesort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) c_int; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:319:6: warning: unsupported type: 'BlockPointer'
 pub const mergesort_b = @compileError("unable to resolve prototype of function"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:319:6
-pub extern fn psort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:327:7: warning: unsupported type: 'BlockPointer'
+pub extern fn psort(__base: ?*anyopaque, __nel: usize, __width: usize, __compar: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:327:7: warning: unsupported type: 'BlockPointer'
 pub const psort_b = @compileError("unable to resolve prototype of function"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:327:7
-pub extern fn psort_r(__base: ?*anyopaque, __nel: usize, __width: usize, ?*anyopaque, __compar: ?fn (?*anyopaque, ?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:335:7: warning: unsupported type: 'BlockPointer'
+pub extern fn psort_r(__base: ?*anyopaque, __nel: usize, __width: usize, ?*anyopaque, __compar: ?*const fn (?*anyopaque, ?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:335:7: warning: unsupported type: 'BlockPointer'
 pub const qsort_b = @compileError("unable to resolve prototype of function"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:335:7
-pub extern fn qsort_r(__base: ?*anyopaque, __nel: usize, __width: usize, ?*anyopaque, __compar: ?fn (?*anyopaque, ?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void;
+pub extern fn qsort_r(__base: ?*anyopaque, __nel: usize, __width: usize, ?*anyopaque, __compar: ?*const fn (?*anyopaque, ?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void;
 pub extern fn radixsort(__base: [*c][*c]const u8, __nel: c_int, __table: [*c]const u8, __endbyte: c_uint) c_int;
 pub extern fn rpmatch([*c]const u8) c_int;
 pub extern fn sradixsort(__base: [*c][*c]const u8, __nel: c_int, __table: [*c]const u8, __endbyte: c_uint) c_int;
@@ -759,10 +764,10 @@ pub const struct___sFILE = extern struct {
     _bf: struct___sbuf,
     _lbfsize: c_int,
     _cookie: ?*anyopaque,
-    _close: ?fn (?*anyopaque) callconv(.C) c_int,
-    _read: ?fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
-    _seek: ?fn (?*anyopaque, fpos_t, c_int) callconv(.C) fpos_t,
-    _write: ?fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
+    _close: ?*const fn (?*anyopaque) callconv(.C) c_int,
+    _read: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
+    _seek: ?*const fn (?*anyopaque, fpos_t, c_int) callconv(.C) fpos_t,
+    _write: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
     _ub: struct___sbuf,
     _extra: ?*struct___sFILEX,
     _ur: c_int,
@@ -879,7 +884,7 @@ pub extern fn setbuffer([*c]FILE, [*c]u8, c_int) void;
 pub extern fn setlinebuf([*c]FILE) c_int;
 pub extern fn vasprintf(noalias [*c][*c]u8, noalias [*c]const u8, va_list) c_int;
 pub extern fn zopen([*c]const u8, [*c]const u8, c_int) [*c]FILE;
-pub extern fn funopen(?*const anyopaque, ?fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int, ?fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int, ?fn (?*anyopaque, fpos_t, c_int) callconv(.C) fpos_t, ?fn (?*anyopaque) callconv(.C) c_int) [*c]FILE;
+pub extern fn funopen(?*const anyopaque, ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int, ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int, ?*const fn (?*anyopaque, fpos_t, c_int) callconv(.C) fpos_t, ?*const fn (?*anyopaque) callconv(.C) c_int) [*c]FILE;
 pub extern fn __sprintf_chk(noalias [*c]u8, c_int, usize, noalias [*c]const u8, ...) c_int;
 pub extern fn __snprintf_chk(noalias [*c]u8, usize, c_int, usize, noalias [*c]const u8, ...) c_int;
 pub extern fn __vsprintf_chk(noalias [*c]u8, c_int, usize, noalias [*c]const u8, va_list) c_int;
@@ -921,7 +926,7 @@ pub extern fn __darwin_check_fd_set_overflow(c_int, ?*const anyopaque, c_int) c_
 pub inline fn __darwin_check_fd_set(arg__a: c_int, arg__b: ?*const anyopaque) c_int {
     var _a = arg__a;
     var _b = arg__b;
-    if (@intCast(usize, @ptrToInt(__darwin_check_fd_set_overflow)) != @bitCast(usize, @as(c_long, @as(c_int, 0)))) {
+    if (@intCast(usize, @ptrToInt(&__darwin_check_fd_set_overflow)) != @bitCast(usize, @as(c_long, @as(c_int, 0)))) {
         return __darwin_check_fd_set_overflow(_a, _b, @as(c_int, 0));
     } else {
         return 1;
@@ -1563,21 +1568,40 @@ pub fn QuicAddrSetFamily(arg_Addr: [*c]QUIC_ADDR, arg_Family: QUIC_ADDRESS_FAMIL
     var Addr = arg_Addr;
     var Family = arg_Family;
     Addr.*.Ip.sa_family = Family;
-} // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:85:19: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:291:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddrGetPort(Addr: [*c]const QUIC_ADDR) callconv(.C) u16; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:85:19: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:304:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddrSetPort(arg_Addr: [*c]QUIC_ADDR, arg_Port: u16) callconv(.C) void;
+}
+pub fn QuicAddrGetPort(Addr: [*c]const QUIC_ADDR) callconv(.C) u16 {
+    if (@as(c_int, 2) == @bitCast(c_int, @as(c_uint, Addr.*.Ip.sa_family))) {
+        return @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Addr.*.Ipv4.sin_port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Addr.*.Ipv4.sin_port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Addr.*.Ipv4.sin_port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Addr.*.Ipv4.sin_port)))));
+    } else {
+        return @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Addr.*.Ipv6.sin6_port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Addr.*.Ipv6.sin6_port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Addr.*.Ipv6.sin6_port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Addr.*.Ipv6.sin6_port)))));
+    }
+    return 0;
+}
+pub fn QuicAddrSetPort(arg_Addr: [*c]QUIC_ADDR, arg_Port: u16) callconv(.C) void {
+    var Addr = arg_Addr;
+    var Port = arg_Port;
+    if (@as(c_int, 2) == @bitCast(c_int, @as(c_uint, Addr.*.Ip.sa_family))) {
+        Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Port)))));
+    } else {
+        Addr.*.Ipv6.sin6_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Port)))));
+    }
+}
 pub fn QuicAddrIncrement(arg_Addr: [*c]QUIC_ADDR) callconv(.C) void {
     var Addr = arg_Addr;
     if (@bitCast(c_int, @as(c_uint, Addr.*.Ip.sa_family)) == @as(c_int, 2)) {
-        @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment(u8), &Addr.*.Ipv4.sin_addr))[@intCast(c_uint, @as(c_int, 3))] +%= 1;
+        @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &Addr.*.Ipv4.sin_addr))[@intCast(c_uint, @as(c_int, 3))] +%= 1;
     } else {
-        @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment(u8), &Addr.*.Ipv6.sin6_addr))[@intCast(c_uint, @as(c_int, 15))] +%= 1;
+        @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &Addr.*.Ipv6.sin6_addr))[@intCast(c_uint, @as(c_int, 15))] +%= 1;
     }
-} // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:88:6: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:334:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddrSetToLoopback(arg_Addr: [*c]QUIC_ADDR) callconv(.C) void;
+}
+pub fn QuicAddrSetToLoopback(arg_Addr: [*c]QUIC_ADDR) callconv(.C) void {
+    var Addr = arg_Addr;
+    if (@bitCast(c_int, @as(c_uint, Addr.*.Ip.sa_family)) == @as(c_int, 2)) {
+        Addr.*.Ipv4.sin_addr.s_addr = if (__builtin_constant_p(@bitCast(u_int32_t, @as(c_int, 2130706433))) != 0) @bitCast(__uint32_t, ((((@bitCast(__uint32_t, @bitCast(u_int32_t, @as(c_int, 2130706433))) & @as(c_uint, 4278190080)) >> @intCast(@import("std").math.Log2Int(c_uint), 24)) | ((@bitCast(__uint32_t, @bitCast(u_int32_t, @as(c_int, 2130706433))) & @as(c_uint, 16711680)) >> @intCast(@import("std").math.Log2Int(c_uint), 8))) | ((@bitCast(__uint32_t, @bitCast(u_int32_t, @as(c_int, 2130706433))) & @as(c_uint, 65280)) << @intCast(@import("std").math.Log2Int(c_uint), 8))) | ((@bitCast(__uint32_t, @bitCast(u_int32_t, @as(c_int, 2130706433))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 24))) else _OSSwapInt32(@bitCast(u_int32_t, @as(c_int, 2130706433)));
+    } else {
+        Addr.*.Ipv6.sin6_addr = in6addr_loopback;
+    }
+}
 pub fn QuicAddrHash(arg_Addr: [*c]const QUIC_ADDR) callconv(.C) u32 {
     var Addr = arg_Addr;
     var Hash: u32 = 5387;
@@ -1621,18 +1645,76 @@ pub fn QuicAddrIsWildCard(Addr: [*c]const QUIC_ADDR) callconv(.C) BOOLEAN {
         return @bitCast(BOOLEAN, @truncate(i8, @boolToInt(memcmp(@ptrCast(?*const anyopaque, &Addr.*.Ipv6.sin6_addr), @ptrCast(?*const anyopaque, &ZeroAddr), @sizeOf(IN6_ADDR)) == @as(c_int, 0))));
     }
     return 0;
-} // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:85:19: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:389:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddr4FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:85:19: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:427:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddr6FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:85:19: warning: TODO implement function '__builtin_constant_p' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:461:1: warning: unable to translate function, demoted to extern
-pub extern fn QuicAddrFromString(arg_AddrStr: [*c]const u8, arg_Port: u16, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN;
+}
+pub fn QuicAddr4FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
+    var AddrStr = arg_AddrStr;
+    var Addr = arg_Addr;
+    if (@bitCast(c_int, @as(c_uint, AddrStr[@intCast(c_uint, @as(c_int, 0))])) == @as(c_int, '[')) {
+        return 0;
+    }
+    var PortStart: [*c]const u8 = strchr(AddrStr, @as(c_int, ':'));
+    if (PortStart != @ptrCast([*c]const u8, @alignCast(@import("std").meta.alignment([*c]const u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
+        if (strchr(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))), @as(c_int, ':')) != @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
+            return 0;
+        }
+        var TmpAddrStr: [16]u8 = undefined;
+        var AddrLength: usize = @bitCast(usize, @divExact(@bitCast(c_long, @ptrToInt(PortStart) -% @ptrToInt(AddrStr)), @sizeOf(u8)));
+        if (AddrLength >= @sizeOf([16]u8)) {
+            return 0;
+        }
+        _ = __builtin___memcpy_chk(@ptrCast(?*anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @ptrCast(?*const anyopaque, AddrStr), AddrLength, __builtin_object_size(@ptrCast(?*const anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @as(c_int, 0)));
+        TmpAddrStr[AddrLength] = '\x00';
+        if (inet_pton(@as(c_int, 2), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr)), @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
+            return 0;
+        }
+        Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))))) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(@bitCast(u16, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))))));
+    } else {
+        if (inet_pton(@as(c_int, 2), AddrStr, @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
+            return 0;
+        }
+    }
+    Addr.*.Ip.sa_family = 2;
+    return 1;
+}
+pub fn QuicAddr6FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
+    var AddrStr = arg_AddrStr;
+    var Addr = arg_Addr;
+    if (@bitCast(c_int, @as(c_uint, AddrStr[@intCast(c_uint, @as(c_int, 0))])) == @as(c_int, '[')) {
+        var BracketEnd: [*c]const u8 = strchr(AddrStr, @as(c_int, ']'));
+        if ((BracketEnd == @ptrCast([*c]const u8, @alignCast(@import("std").meta.alignment([*c]const u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) or (@bitCast(c_int, @as(c_uint, (BracketEnd + @bitCast(usize, @intCast(isize, @as(c_int, 1)))).*)) != @as(c_int, ':'))) {
+            return 0;
+        }
+        var TmpAddrStr: [64]u8 = undefined;
+        var AddrLength: usize = @bitCast(usize, @divExact(@bitCast(c_long, @ptrToInt(BracketEnd) -% @ptrToInt(AddrStr)), @sizeOf(u8)) - @bitCast(c_long, @as(c_long, @as(c_int, 1))));
+        if (AddrLength >= @sizeOf([64]u8)) {
+            return 0;
+        }
+        _ = __builtin___memcpy_chk(@ptrCast(?*anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @ptrCast(?*const anyopaque, AddrStr + @bitCast(usize, @intCast(isize, @as(c_int, 1)))), AddrLength, __builtin_object_size(@ptrCast(?*const anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @as(c_int, 0)));
+        TmpAddrStr[AddrLength] = '\x00';
+        if (inet_pton(@as(c_int, 30), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr)), @ptrCast(?*anyopaque, &Addr.*.Ipv6.sin6_addr)) != @as(c_int, 1)) {
+            return 0;
+        }
+        Addr.*.Ipv6.sin6_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(atoi(BracketEnd + @bitCast(usize, @intCast(isize, @as(c_int, 2))))) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(BracketEnd + @bitCast(usize, @intCast(isize, @as(c_int, 2)))))))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(BracketEnd + @bitCast(usize, @intCast(isize, @as(c_int, 2)))))))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(@bitCast(u16, @truncate(c_short, atoi(BracketEnd + @bitCast(usize, @intCast(isize, @as(c_int, 2)))))))))));
+    } else {
+        if (inet_pton(@as(c_int, 30), AddrStr, @ptrCast(?*anyopaque, &Addr.*.Ipv6.sin6_addr)) != @as(c_int, 1)) {
+            return 0;
+        }
+    }
+    Addr.*.Ip.sa_family = 30;
+    return 1;
+}
+pub fn QuicAddrFromString(arg_AddrStr: [*c]const u8, arg_Port: u16, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
+    var AddrStr = arg_AddrStr;
+    var Port = arg_Port;
+    var Addr = arg_Addr;
+    Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Port)))));
+    return @bitCast(BOOLEAN, @truncate(i8, @boolToInt((@bitCast(c_int, @as(c_uint, QuicAddr4FromString(AddrStr, Addr))) != 0) or (@bitCast(c_int, @as(c_uint, QuicAddr6FromString(AddrStr, Addr))) != 0))));
+}
 pub const struct_QUIC_ADDR_STR = extern struct {
     Address: [64]u8,
 };
 pub const QUIC_ADDR_STR = struct_QUIC_ADDR_STR; // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/secure/_stdio.h:47:3: warning: TODO implement function '__builtin___sprintf_chk' in std.zig.c_builtins
-// /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:482:1: warning: unable to translate function, demoted to extern
+// /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:482:1: warning: unable to translate function, demoted to extern
 pub extern fn QuicAddrToString(arg_Addr: [*c]const QUIC_ADDR, arg_AddrStr: [*c]QUIC_ADDR_STR) callconv(.C) BOOLEAN;
 pub const struct_QUIC_HANDLE = opaque {};
 pub const HQUIC = ?*struct_QUIC_HANDLE;
@@ -1752,7 +1834,7 @@ pub const struct_QUIC_REGISTRATION_CONFIG = extern struct {
 };
 pub const QUIC_REGISTRATION_CONFIG = struct_QUIC_REGISTRATION_CONFIG;
 pub const QUIC_CREDENTIAL_LOAD_COMPLETE = fn (HQUIC, ?*anyopaque, c_uint) callconv(.C) void;
-pub const QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER = ?QUIC_CREDENTIAL_LOAD_COMPLETE;
+pub const QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER = ?*const QUIC_CREDENTIAL_LOAD_COMPLETE;
 pub const struct_QUIC_CERTIFICATE_HASH = extern struct {
     ShaHash: [20]u8,
 };
@@ -1793,7 +1875,7 @@ const union_unnamed_4 = extern union {
 pub const struct_QUIC_CREDENTIAL_CONFIG = extern struct {
     Type: QUIC_CREDENTIAL_TYPE,
     Flags: QUIC_CREDENTIAL_FLAGS,
-    CertPtr: union_unnamed_4,
+    unnamed_0: union_unnamed_4,
     Principal: [*c]const u8,
     Reserved: ?*anyopaque,
     AsyncHandler: QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER,
@@ -1862,9 +1944,9 @@ pub const struct_QUIC_HANDSHAKE_INFO = extern struct {
     KeyExchangeStrength: i32,
     CipherSuite: QUIC_CIPHER_SUITE,
 };
-pub const QUIC_HANDSHAKE_INFO = struct_QUIC_HANDSHAKE_INFO; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:387:14: warning: struct demoted to opaque type - has bitfield
+pub const QUIC_HANDSHAKE_INFO = struct_QUIC_HANDSHAKE_INFO; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:387:14: warning: struct demoted to opaque type - has bitfield
 pub const struct_QUIC_STATISTICS = opaque {};
-pub const QUIC_STATISTICS = struct_QUIC_STATISTICS; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:433:14: warning: struct demoted to opaque type - has bitfield
+pub const QUIC_STATISTICS = struct_QUIC_STATISTICS; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:433:14: warning: struct demoted to opaque type - has bitfield
 pub const struct_QUIC_STATISTICS_V2 = opaque {};
 pub const QUIC_STATISTICS_V2 = struct_QUIC_STATISTICS_V2;
 pub const struct_QUIC_LISTENER_STATISTICS = extern struct {
@@ -1906,7 +1988,7 @@ pub const QUIC_PERF_COUNTER_SEND_STATELESS_RESET: c_int = 29;
 pub const QUIC_PERF_COUNTER_SEND_STATELESS_RETRY: c_int = 30;
 pub const QUIC_PERF_COUNTER_MAX: c_int = 31;
 pub const enum_QUIC_PERFORMANCE_COUNTERS = c_uint;
-pub const QUIC_PERFORMANCE_COUNTERS = enum_QUIC_PERFORMANCE_COUNTERS; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:537:22: warning: struct demoted to opaque type - has bitfield
+pub const QUIC_PERFORMANCE_COUNTERS = enum_QUIC_PERFORMANCE_COUNTERS; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:537:22: warning: struct demoted to opaque type - has bitfield
 const struct_unnamed_6 = opaque {};
 const union_unnamed_5 = extern union {
     IsSetFlags: u64,
@@ -1917,87 +1999,12 @@ pub const struct_QUIC_GLOBAL_SETTINGS = extern struct {
     RetryMemoryLimit: u16,
     LoadBalancingMode: u16,
 };
-pub const QUIC_GLOBAL_SETTINGS = struct_QUIC_GLOBAL_SETTINGS; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:551:22: warning: struct demoted to opaque type - has bitfield
+pub const QUIC_GLOBAL_SETTINGS = struct_QUIC_GLOBAL_SETTINGS; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:551:22: warning: struct demoted to opaque type - has bitfield
 const struct_unnamed_8 = opaque {};
-// Unused, opaque version of QuicSettings
 const union_unnamed_7 = extern union {
     IsSetFlags: u64,
     IsSet: struct_unnamed_8,
-}; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:610:13: warning: struct demoted to opaque type - has bitfield
-pub const QUIC_SETTINGS = QuicSettings;
-pub const QuicSettings = packed struct {
-    pub fn toQUIC_SETTINGS(self: *@This()) ?*const QUIC_SETTINGS {
-        return @ptrCast(?*const QUIC_SETTINGS, self);
-    }
-
-    IsSet: packed struct {
-        MaxBytesPerKey: bool,
-        HandshakeIdleTimeoutMs: bool,
-        IdleTimeoutMs: bool,
-        MtuDiscoverySearchCompleteTimeoutUs: bool,
-        TlsClientMaxSendBuffer: bool,
-        TlsServerMaxSendBuffer: bool,
-        StreamRecvWindowDefault: bool,
-        StreamRecvBufferDefault: bool,
-        ConnFlowControlWindow: bool,
-        MaxWorkerQueueDelayUs: bool,
-        MaxStatelessOperations: bool,
-        InitialWindowPackets: bool,
-        SendIdleTimeoutMs: bool,
-        InitialRttMs: bool,
-        MaxAckDelayMs: bool,
-        DisconnectTimeoutMs: bool,
-        KeepAliveIntervalMs: bool,
-        CongestionControlAlgorithm: bool,
-        PeerBidiStreamCount: bool,
-        PeerUnidiStreamCount: bool,
-        MaxBindingStatelessOperations: bool,
-        StatelessOperationExpirationMs: bool,
-        MinimumMtu: bool,
-        MaximumMtu: bool,
-        SendBufferingEnabled: bool,
-        PacingEnabled: bool,
-        MigrationEnabled: bool,
-        DatagramReceiveEnabled: bool,
-        ServerResumptionLevel: bool,
-        MaxOperationsPerDrain: bool,
-        MtuDiscoveryMissingProbeCount: bool,
-        RESERVED: u33,
-    },
-
-    MaxBytesPerKey: u64,
-    HandshakeIdleTimeoutMs: u64,
-    IdleTimeoutMs: u64,
-    MtuDiscoverySearchCompleteTimeoutUs: u64,
-    TlsClientMaxSendBuffer: u32,
-    TlsServerMaxSendBuffer: u32,
-    StreamRecvWindowDefault: u32,
-    StreamRecvBufferDefault: u32,
-    ConnFlowControlWindow: u32,
-    MaxWorkerQueueDelayUs: u32,
-    MaxStatelessOperations: u32,
-    InitialWindowPackets: u32,
-    SendIdleTimeoutMs: u32,
-    InitialRttMs: u32,
-    MaxAckDelayMs: u32,
-    DisconnectTimeoutMs: u32,
-    KeepAliveIntervalMs: u32,
-    CongestionControlAlgorithm: u16, // QUIC_CONGESTION_CONTROL_ALGORITHM
-    PeerBidiStreamCount: u16,
-    PeerUnidiStreamCount: u16,
-    MaxBindingStatelessOperations: u16,
-    StatelessOperationExpirationMs: u16,
-    MinimumMtu: u16,
-    MaximumMtu: u16,
-    SendBufferingEnabled: bool,
-    PacingEnabled: bool,
-    MigrationEnabled: bool,
-    DatagramReceiveEnabled: bool,
-    ServerResumptionLevel: u2, // QUIC_SERVER_RESUMPTION_LEVEL
-    RESERVED: u2,
-    MaxOperationsPerDrain: u8,
-    MtuDiscoveryMissingProbeCount: u8,
-};
+}; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:610:13: warning: struct demoted to opaque type - has bitfield
 const struct_unnamed_9 = opaque {};
 pub const struct_QUIC_TLS_SECRETS = extern struct {
     SecretLength: u8,
@@ -2010,43 +2017,41 @@ pub const struct_QUIC_TLS_SECRETS = extern struct {
     ServerTrafficSecret0: [64]u8,
 };
 pub const QUIC_TLS_SECRETS = struct_QUIC_TLS_SECRETS;
-pub const QUIC_SET_CONTEXT_FN = ?fn (HQUIC, ?*anyopaque) callconv(.C) void;
-pub const QUIC_GET_CONTEXT_FN = ?fn (HQUIC) callconv(.C) ?*anyopaque;
-pub const QUIC_SET_CALLBACK_HANDLER_FN = ?fn (HQUIC, ?*const anyopaque, ?*anyopaque) callconv(.C) void;
-pub const QUIC_SET_PARAM_FN = ?fn (HQUIC, u32, u32, ?*const anyopaque) callconv(.C) c_uint;
-pub const QUIC_GET_PARAM_FN = ?fn (HQUIC, u32, [*c]u32, ?*anyopaque) callconv(.C) c_uint;
-pub const QUIC_REGISTRATION_OPEN_FN = ?fn ([*c]const QUIC_REGISTRATION_CONFIG, [*c]HQUIC) callconv(.C) c_uint;
-pub const QUIC_REGISTRATION_CLOSE_FN = ?fn (HQUIC) callconv(.C) void;
-pub const QUIC_REGISTRATION_SHUTDOWN_FN = ?fn (HQUIC, QUIC_CONNECTION_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) void;
-pub const QUIC_CONFIGURATION_OPEN_FN = ?fn (HQUIC, [*c]const QUIC_BUFFER, u32, ?*const QUIC_SETTINGS, u32, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
-pub const QUIC_CONFIGURATION_CLOSE_FN = ?fn (HQUIC) callconv(.C) void;
-pub const QUIC_CONFIGURATION_LOAD_CREDENTIAL_FN = ?fn (HQUIC, [*c]const QUIC_CREDENTIAL_CONFIG) callconv(.C) c_uint;
+pub const QUIC_SET_CONTEXT_FN = ?*const fn (HQUIC, ?*anyopaque) callconv(.C) void;
+pub const QUIC_GET_CONTEXT_FN = ?*const fn (HQUIC) callconv(.C) ?*anyopaque;
+pub const QUIC_SET_CALLBACK_HANDLER_FN = ?*const fn (HQUIC, ?*anyopaque, ?*anyopaque) callconv(.C) void;
+pub const QUIC_SET_PARAM_FN = ?*const fn (HQUIC, u32, u32, ?*const anyopaque) callconv(.C) c_uint;
+pub const QUIC_GET_PARAM_FN = ?*const fn (HQUIC, u32, [*c]u32, ?*anyopaque) callconv(.C) c_uint;
+pub const QUIC_REGISTRATION_OPEN_FN = ?*const fn ([*c]const QUIC_REGISTRATION_CONFIG, [*c]HQUIC) callconv(.C) c_uint;
+pub const QUIC_REGISTRATION_CLOSE_FN = ?*const fn (HQUIC) callconv(.C) void;
+pub const QUIC_REGISTRATION_SHUTDOWN_FN = ?*const fn (HQUIC, QUIC_CONNECTION_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) void;
+pub const QUIC_CONFIGURATION_OPEN_FN = ?*const fn (HQUIC, [*c]const QUIC_BUFFER, u32, ?*const QUIC_SETTINGS, u32, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
+pub const QUIC_CONFIGURATION_CLOSE_FN = ?*const fn (HQUIC) callconv(.C) void;
+pub const QUIC_CONFIGURATION_LOAD_CREDENTIAL_FN = ?*const fn (HQUIC, [*c]const QUIC_CREDENTIAL_CONFIG) callconv(.C) c_uint;
 pub const QUIC_LISTENER_EVENT_NEW_CONNECTION: c_int = 0;
 pub const QUIC_LISTENER_EVENT_STOP_COMPLETE: c_int = 1;
 pub const enum_QUIC_LISTENER_EVENT_TYPE = c_uint;
 pub const QUIC_LISTENER_EVENT_TYPE = enum_QUIC_LISTENER_EVENT_TYPE;
-pub const struct_NEW_CONNECTION_WRAPPER = extern struct {
+const struct_unnamed_11 = extern struct {
     Info: [*c]const QUIC_NEW_CONNECTION_INFO,
     Connection: HQUIC,
-};
-pub const NEW_CONNECTION_WRAPPER = struct_NEW_CONNECTION_WRAPPER; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:916:13: warning: struct demoted to opaque type - has bitfield
-pub const struct_STOP_COMPLETE_WRAPPER = packed struct { AppCloseInProgress: bool, reserved: u7 };
-pub const STOP_COMPLETE_WRAPPER = struct_STOP_COMPLETE_WRAPPER;
+}; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:918:21: warning: struct demoted to opaque type - has bitfield
+const struct_unnamed_12 = opaque {};
 const union_unnamed_10 = extern union {
-    NEW_CONNECTION: struct_NEW_CONNECTION_WRAPPER,
-    STOP_COMPLETE: struct_STOP_COMPLETE_WRAPPER,
+    NEW_CONNECTION: LISTENER_NEW_CONNECTION_WRAPPER,
+    STOP_COMPLETE: LISTENER_STOP_COMPLETE_WRAPPER,
 };
 pub const struct_QUIC_LISTENER_EVENT = extern struct {
     Type: QUIC_LISTENER_EVENT_TYPE,
     unnamed_0: union_unnamed_10,
 };
 pub const QUIC_LISTENER_EVENT = struct_QUIC_LISTENER_EVENT;
-pub const QUIC_LISTENER_CALLBACK = fn (HQUIC, ?*anyopaque, [*c]QUIC_LISTENER_EVENT) callconv(.C) c_uint;
-pub const QUIC_LISTENER_CALLBACK_HANDLER = ?QUIC_LISTENER_CALLBACK;
-pub const QUIC_LISTENER_OPEN_FN = ?fn (HQUIC, QUIC_LISTENER_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
-pub const QUIC_LISTENER_CLOSE_FN = ?fn (HQUIC) callconv(.C) void;
-pub const QUIC_LISTENER_START_FN = ?fn (HQUIC, [*c]const QUIC_BUFFER, u32, [*c]const QUIC_ADDR) callconv(.C) c_uint;
-pub const QUIC_LISTENER_STOP_FN = ?fn (HQUIC) callconv(.C) void;
+pub const QUIC_LISTENER_CALLBACK = fn (HQUIC, ?*anyopaque, ?*QUIC_LISTENER_EVENT) callconv(.C) c_uint;
+pub const QUIC_LISTENER_CALLBACK_HANDLER = ?*const QUIC_LISTENER_CALLBACK;
+pub const QUIC_LISTENER_OPEN_FN = ?*const fn (HQUIC, QUIC_LISTENER_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
+pub const QUIC_LISTENER_CLOSE_FN = ?*const fn (HQUIC) callconv(.C) void;
+pub const QUIC_LISTENER_START_FN = ?*const fn (HQUIC, [*c]const QUIC_BUFFER, u32, [*c]const QUIC_ADDR) callconv(.C) c_uint;
+pub const QUIC_LISTENER_STOP_FN = ?*const fn (HQUIC) callconv(.C) void;
 pub const QUIC_CONNECTION_EVENT_CONNECTED: c_int = 0;
 pub const QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT: c_int = 1;
 pub const QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER: c_int = 2;
@@ -2065,95 +2070,91 @@ pub const QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED: c_int = 14;
 pub const QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED: c_int = 15;
 pub const enum_QUIC_CONNECTION_EVENT_TYPE = c_uint;
 pub const QUIC_CONNECTION_EVENT_TYPE = enum_QUIC_CONNECTION_EVENT_TYPE;
-const struct_unnamed_12 = extern struct {
+const struct_unnamed_14 = extern struct {
     SessionResumed: BOOLEAN,
     NegotiatedAlpnLength: u8,
     NegotiatedAlpn: [*c]const u8,
 };
-const struct_unnamed_13 = extern struct {
+const struct_unnamed_15 = extern struct {
     Status: c_uint,
 };
-const struct_unnamed_14 = extern struct {
-    ErrorCode: QUIC_UINT62,
-}; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:1029:21: warning: struct demoted to opaque type - has bitfield
-const struct_unnamed_15 = packed struct {
-    HandshakeCompleted: bool,
-    PeerAcknowledgedShutdown: bool,
-    AppCloseInProgress: bool,
-};
 const struct_unnamed_16 = extern struct {
-    Address: [*c]const QUIC_ADDR,
-};
-const struct_unnamed_17 = extern struct {
-    Address: [*c]const QUIC_ADDR,
-};
+    ErrorCode: QUIC_UINT62,
+}; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:1025:21: warning: struct demoted to opaque type - has bitfield
+const struct_unnamed_17 = opaque {};
 const struct_unnamed_18 = extern struct {
+    Address: [*c]const QUIC_ADDR,
+};
+const struct_unnamed_19 = extern struct {
+    Address: [*c]const QUIC_ADDR,
+};
+const struct_unnamed_20 = extern struct {
     Stream: HQUIC,
     Flags: QUIC_STREAM_OPEN_FLAGS,
 };
-const struct_unnamed_19 = extern struct {
+const struct_unnamed_21 = extern struct {
     BidirectionalCount: u16,
     UnidirectionalCount: u16,
 };
-const struct_unnamed_20 = extern struct {
+const struct_unnamed_22 = extern struct {
     IdealProcessor: u16,
 };
-const struct_unnamed_21 = extern struct {
+const struct_unnamed_23 = extern struct {
     SendEnabled: BOOLEAN,
     MaxSendLength: u16,
 };
-const struct_unnamed_22 = extern struct {
+const struct_unnamed_24 = extern struct {
     Buffer: [*c]const QUIC_BUFFER,
     Flags: QUIC_RECEIVE_FLAGS,
 };
-const struct_unnamed_23 = extern struct {
+const struct_unnamed_25 = extern struct {
     ClientContext: ?*anyopaque,
     State: QUIC_DATAGRAM_SEND_STATE,
 };
-const struct_unnamed_24 = extern struct {
+const struct_unnamed_26 = extern struct {
     ResumptionStateLength: u16,
     ResumptionState: [*c]const u8,
 };
-const struct_unnamed_25 = extern struct {
+const struct_unnamed_27 = extern struct {
     ResumptionTicketLength: u32,
     ResumptionTicket: [*c]const u8,
 };
-const struct_unnamed_26 = extern struct {
+const struct_unnamed_28 = extern struct {
     Certificate: ?*QUIC_CERTIFICATE,
     DeferredErrorFlags: u32,
     DeferredStatus: c_uint,
     Chain: ?*QUIC_CERTIFICATE_CHAIN,
 };
-const union_unnamed_11 = extern union {
-    CONNECTED: struct_unnamed_12,
-    SHUTDOWN_INITIATED_BY_TRANSPORT: struct_unnamed_13,
-    SHUTDOWN_INITIATED_BY_PEER: struct_unnamed_14,
-    SHUTDOWN_COMPLETE: struct_unnamed_15,
-    LOCAL_ADDRESS_CHANGED: struct_unnamed_16,
-    PEER_ADDRESS_CHANGED: struct_unnamed_17,
-    PEER_STREAM_STARTED: struct_unnamed_18,
-    STREAMS_AVAILABLE: struct_unnamed_19,
-    IDEAL_PROCESSOR_CHANGED: struct_unnamed_20,
-    DATAGRAM_STATE_CHANGED: struct_unnamed_21,
-    DATAGRAM_RECEIVED: struct_unnamed_22,
-    DATAGRAM_SEND_STATE_CHANGED: struct_unnamed_23,
-    RESUMED: struct_unnamed_24,
-    RESUMPTION_TICKET_RECEIVED: struct_unnamed_25,
-    PEER_CERTIFICATE_RECEIVED: struct_unnamed_26,
+const union_unnamed_13 = extern union {
+    CONNECTED: struct_unnamed_14,
+    SHUTDOWN_INITIATED_BY_TRANSPORT: struct_unnamed_15,
+    SHUTDOWN_INITIATED_BY_PEER: SHUTDOWN_INITIATED_BY_PEER,
+    SHUTDOWN_COMPLETE: CONN_SHUTDOWN_COMPLETE,
+    LOCAL_ADDRESS_CHANGED: struct_unnamed_18,
+    PEER_ADDRESS_CHANGED: struct_unnamed_19,
+    PEER_STREAM_STARTED: struct_unnamed_20,
+    STREAMS_AVAILABLE: struct_unnamed_21,
+    IDEAL_PROCESSOR_CHANGED: struct_unnamed_22,
+    DATAGRAM_STATE_CHANGED: struct_unnamed_23,
+    DATAGRAM_RECEIVED: struct_unnamed_24,
+    DATAGRAM_SEND_STATE_CHANGED: struct_unnamed_25,
+    RESUMED: struct_unnamed_26,
+    RESUMPTION_TICKET_RECEIVED: struct_unnamed_27,
+    PEER_CERTIFICATE_RECEIVED: struct_unnamed_28,
 };
 pub const struct_QUIC_CONNECTION_EVENT = extern struct {
     Type: QUIC_CONNECTION_EVENT_TYPE,
-    unnamed_0: union_unnamed_11,
+    unnamed_0: union_unnamed_13,
 };
 pub const QUIC_CONNECTION_EVENT = struct_QUIC_CONNECTION_EVENT;
-pub const QUIC_CONNECTION_CALLBACK = fn (HQUIC, ?*anyopaque, [*c]QUIC_CONNECTION_EVENT) callconv(.C) c_uint;
-pub const QUIC_CONNECTION_CALLBACK_HANDLER = ?QUIC_CONNECTION_CALLBACK;
-pub const QUIC_CONNECTION_OPEN_FN = ?fn (HQUIC, QUIC_CONNECTION_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
-pub const QUIC_CONNECTION_CLOSE_FN = ?fn (HQUIC) callconv(.C) void;
-pub const QUIC_CONNECTION_SHUTDOWN_FN = ?fn (HQUIC, QUIC_CONNECTION_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) void;
-pub const QUIC_CONNECTION_START_FN = ?fn (HQUIC, HQUIC, QUIC_ADDRESS_FAMILY, [*c]const u8, u16) callconv(.C) c_uint;
-pub const QUIC_CONNECTION_SET_CONFIGURATION_FN = ?fn (HQUIC, HQUIC) callconv(.C) c_uint;
-pub const QUIC_CONNECTION_SEND_RESUMPTION_FN = ?fn (HQUIC, QUIC_SEND_RESUMPTION_FLAGS, u16, [*c]const u8) callconv(.C) c_uint;
+pub const QUIC_CONNECTION_CALLBACK = fn (HQUIC, ?*anyopaque, ?*QUIC_CONNECTION_EVENT) callconv(.C) c_uint;
+pub const QUIC_CONNECTION_CALLBACK_HANDLER = ?*const QUIC_CONNECTION_CALLBACK;
+pub const QUIC_CONNECTION_OPEN_FN = ?*const fn (HQUIC, QUIC_CONNECTION_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
+pub const QUIC_CONNECTION_CLOSE_FN = ?*const fn (HQUIC) callconv(.C) void;
+pub const QUIC_CONNECTION_SHUTDOWN_FN = ?*const fn (HQUIC, QUIC_CONNECTION_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) void;
+pub const QUIC_CONNECTION_START_FN = ?*const fn (HQUIC, HQUIC, QUIC_ADDRESS_FAMILY, [*c]const u8, u16) callconv(.C) c_uint;
+pub const QUIC_CONNECTION_SET_CONFIGURATION_FN = ?*const fn (HQUIC, HQUIC) callconv(.C) c_uint;
+pub const QUIC_CONNECTION_SEND_RESUMPTION_FN = ?*const fn (HQUIC, QUIC_SEND_RESUMPTION_FLAGS, u16, [*c]const u8) callconv(.C) c_uint;
 pub const QUIC_STREAM_EVENT_START_COMPLETE: c_int = 0;
 pub const QUIC_STREAM_EVENT_RECEIVE: c_int = 1;
 pub const QUIC_STREAM_EVENT_SEND_COMPLETE: c_int = 2;
@@ -2165,66 +2166,56 @@ pub const QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE: c_int = 7;
 pub const QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE: c_int = 8;
 pub const QUIC_STREAM_EVENT_PEER_ACCEPTED: c_int = 9;
 pub const enum_QUIC_STREAM_EVENT_TYPE = c_uint;
-pub const QUIC_STREAM_EVENT_TYPE = enum_QUIC_STREAM_EVENT_TYPE; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:1199:21: warning: struct demoted to opaque type - has bitfield
-const struct_unnamed_28 = packed struct {
-    Status: QUIC_STATUS,
-    ID: QUIC_UINT62,
-    PeerAccepted: bool,
-    RESERVED: u7,
-};
-const struct_unnamed_29 = extern struct {
+pub const QUIC_STREAM_EVENT_TYPE = enum_QUIC_STREAM_EVENT_TYPE; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:1195:21: warning: struct demoted to opaque type - has bitfield
+const struct_unnamed_30 = opaque {};
+const struct_unnamed_31 = extern struct {
     AbsoluteOffset: u64,
     TotalBufferLength: u64,
     Buffers: [*c]const QUIC_BUFFER,
     BufferCount: u32,
     Flags: QUIC_RECEIVE_FLAGS,
 };
-const struct_unnamed_30 = extern struct {
+const struct_unnamed_32 = extern struct {
     Canceled: BOOLEAN,
     ClientContext: ?*anyopaque,
 };
-const struct_unnamed_31 = extern struct {
-    ErrorCode: QUIC_UINT62,
-};
-const struct_unnamed_32 = extern struct {
-    ErrorCode: QUIC_UINT62,
-};
 const struct_unnamed_33 = extern struct {
-    Graceful: BOOLEAN,
-}; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:1226:21: warning: struct demoted to opaque type - has bitfield
-const struct_unnamed_34 = packed struct {
-    ConnectionShutdown: u8,
-    AppCloseInProgress: bool,
-    RESERVED: u7,
+    ErrorCode: QUIC_UINT62,
+};
+const struct_unnamed_34 = extern struct {
+    ErrorCode: QUIC_UINT62,
 };
 const struct_unnamed_35 = extern struct {
+    Graceful: BOOLEAN,
+}; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:1222:21: warning: struct demoted to opaque type - has bitfield
+const struct_unnamed_37 = extern struct {
     ByteCount: u64,
 };
-const union_unnamed_27 = extern union {
-    START_COMPLETE: struct_unnamed_28,
-    RECEIVE: struct_unnamed_29,
-    SEND_COMPLETE: struct_unnamed_30,
-    PEER_SEND_ABORTED: struct_unnamed_31,
-    PEER_RECEIVE_ABORTED: struct_unnamed_32,
-    SEND_SHUTDOWN_COMPLETE: struct_unnamed_33,
-    SHUTDOWN_COMPLETE: struct_unnamed_34,
-    IDEAL_SEND_BUFFER_SIZE: struct_unnamed_35,
+const union_unnamed_29 = extern union {
+    START_COMPLETE: STREAM_START_COMPLETE,
+    RECEIVE: struct_unnamed_31,
+    SEND_COMPLETE: struct_unnamed_32,
+    PEER_SEND_ABORTED: struct_unnamed_33,
+    PEER_RECEIVE_ABORTED: struct_unnamed_34,
+    SEND_SHUTDOWN_COMPLETE: struct_unnamed_35,
+    SHUTDOWN_COMPLETE: STREAM_SHUTDOWN_COMPLETE,
+    IDEAL_SEND_BUFFER_SIZE: struct_unnamed_37,
 };
 pub const struct_QUIC_STREAM_EVENT = extern struct {
     Type: QUIC_STREAM_EVENT_TYPE,
-    unnamed_0: union_unnamed_27,
+    unnamed_0: union_unnamed_29,
 };
 pub const QUIC_STREAM_EVENT = struct_QUIC_STREAM_EVENT;
-pub const QUIC_STREAM_CALLBACK = fn (HQUIC, ?*anyopaque, [*c]QUIC_STREAM_EVENT) callconv(.C) c_uint;
-pub const QUIC_STREAM_CALLBACK_HANDLER = ?QUIC_STREAM_CALLBACK;
-pub const QUIC_STREAM_OPEN_FN = ?fn (HQUIC, QUIC_STREAM_OPEN_FLAGS, QUIC_STREAM_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
-pub const QUIC_STREAM_CLOSE_FN = ?fn (HQUIC) callconv(.C) void;
-pub const QUIC_STREAM_START_FN = ?fn (HQUIC, QUIC_STREAM_START_FLAGS) callconv(.C) c_uint;
-pub const QUIC_STREAM_SHUTDOWN_FN = ?fn (HQUIC, QUIC_STREAM_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) c_uint;
-pub const QUIC_STREAM_SEND_FN = ?fn (HQUIC, [*c]const QUIC_BUFFER, u32, QUIC_SEND_FLAGS, ?*anyopaque) callconv(.C) c_uint;
-pub const QUIC_STREAM_RECEIVE_COMPLETE_FN = ?fn (HQUIC, u64) callconv(.C) void;
-pub const QUIC_STREAM_RECEIVE_SET_ENABLED_FN = ?fn (HQUIC, BOOLEAN) callconv(.C) c_uint;
-pub const QUIC_DATAGRAM_SEND_FN = ?fn (HQUIC, [*c]const QUIC_BUFFER, u32, QUIC_SEND_FLAGS, ?*anyopaque) callconv(.C) c_uint;
+pub const QUIC_STREAM_CALLBACK = fn (HQUIC, ?*anyopaque, ?*QUIC_STREAM_EVENT) callconv(.C) c_uint;
+pub const QUIC_STREAM_CALLBACK_HANDLER = ?*const QUIC_STREAM_CALLBACK;
+pub const QUIC_STREAM_OPEN_FN = ?*const fn (HQUIC, QUIC_STREAM_OPEN_FLAGS, QUIC_STREAM_CALLBACK_HANDLER, ?*anyopaque, [*c]HQUIC) callconv(.C) c_uint;
+pub const QUIC_STREAM_CLOSE_FN = ?*const fn (HQUIC) callconv(.C) void;
+pub const QUIC_STREAM_START_FN = ?*const fn (HQUIC, QUIC_STREAM_START_FLAGS) callconv(.C) c_uint;
+pub const QUIC_STREAM_SHUTDOWN_FN = ?*const fn (HQUIC, QUIC_STREAM_SHUTDOWN_FLAGS, QUIC_UINT62) callconv(.C) c_uint;
+pub const QUIC_STREAM_SEND_FN = ?*const fn (HQUIC, [*c]const QUIC_BUFFER, u32, QUIC_SEND_FLAGS, ?*anyopaque) callconv(.C) c_uint;
+pub const QUIC_STREAM_RECEIVE_COMPLETE_FN = ?*const fn (HQUIC, u64) callconv(.C) void;
+pub const QUIC_STREAM_RECEIVE_SET_ENABLED_FN = ?*const fn (HQUIC, BOOLEAN) callconv(.C) c_uint;
+pub const QUIC_DATAGRAM_SEND_FN = ?*const fn (HQUIC, [*c]const QUIC_BUFFER, u32, QUIC_SEND_FLAGS, ?*anyopaque) callconv(.C) c_uint;
 pub const struct_QUIC_API_TABLE = extern struct {
     SetContext: QUIC_SET_CONTEXT_FN,
     GetContext: QUIC_GET_CONTEXT_FN,
@@ -2260,20 +2251,20 @@ pub const QUIC_API_TABLE = struct_QUIC_API_TABLE;
 pub extern fn MsQuicOpenVersion(Version: u32, QuicApi: [*c]?*const anyopaque) c_uint;
 pub extern fn MsQuicClose(QuicApi: ?*const anyopaque) void;
 pub const __block = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // (no file):27:9
-pub const __INTMAX_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `L`"); // (no file):69:9
-pub const __UINTMAX_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `UL`"); // (no file):75:9
-pub const __FLT16_DENORM_MIN__ = @compileError("unable to translate C expr: unexpected token .IntegerLiteral"); // (no file):106:9
-pub const __FLT16_EPSILON__ = @compileError("unable to translate C expr: unexpected token .IntegerLiteral"); // (no file):110:9
-pub const __FLT16_MAX__ = @compileError("unable to translate C expr: unexpected token .IntegerLiteral"); // (no file):116:9
-pub const __FLT16_MIN__ = @compileError("unable to translate C expr: unexpected token .IntegerLiteral"); // (no file):119:9
-pub const __INT64_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `LL`"); // (no file):179:9
-pub const __UINT32_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `U`"); // (no file):201:9
-pub const __UINT64_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `ULL`"); // (no file):209:9
-pub const __USER_LABEL_PREFIX__ = @compileError("unable to translate macro: undefined identifier `_`"); // (no file):292:9
-pub const __nonnull = @compileError("unable to translate macro: undefined identifier `_Nonnull`"); // (no file):322:9
-pub const __null_unspecified = @compileError("unable to translate macro: undefined identifier `_Null_unspecified`"); // (no file):323:9
-pub const __nullable = @compileError("unable to translate macro: undefined identifier `_Nullable`"); // (no file):324:9
-pub const __weak = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // (no file):382:9
+pub const __INTMAX_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `L`"); // (no file):82:9
+pub const __UINTMAX_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `UL`"); // (no file):88:9
+pub const __FLT16_DENORM_MIN__ = @compileError("unable to translate C expr: unexpected token 'IntegerLiteral'"); // (no file):111:9
+pub const __FLT16_EPSILON__ = @compileError("unable to translate C expr: unexpected token 'IntegerLiteral'"); // (no file):115:9
+pub const __FLT16_MAX__ = @compileError("unable to translate C expr: unexpected token 'IntegerLiteral'"); // (no file):121:9
+pub const __FLT16_MIN__ = @compileError("unable to translate C expr: unexpected token 'IntegerLiteral'"); // (no file):124:9
+pub const __INT64_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `LL`"); // (no file):184:9
+pub const __UINT32_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `U`"); // (no file):206:9
+pub const __UINT64_C_SUFFIX__ = @compileError("unable to translate macro: undefined identifier `ULL`"); // (no file):214:9
+pub const __USER_LABEL_PREFIX__ = @compileError("unable to translate macro: undefined identifier `_`"); // (no file):305:9
+pub const __nonnull = @compileError("unable to translate macro: undefined identifier `_Nonnull`"); // (no file):336:9
+pub const __null_unspecified = @compileError("unable to translate macro: undefined identifier `_Null_unspecified`"); // (no file):337:9
+pub const __nullable = @compileError("unable to translate macro: undefined identifier `_Nullable`"); // (no file):338:9
+pub const __weak = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // (no file):393:9
 pub const __AVAILABILITY_INTERNAL_DEPRECATED = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:109:9
 pub const __AVAILABILITY_INTERNAL_DEPRECATED_MSG = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:112:17
 pub const __AVAILABILITY_INTERNAL_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:121:9
@@ -2855,23 +2846,23 @@ pub const __API_AVAILABLE_PLATFORM_macCatalyst = @compileError("unable to transl
 pub const __API_AVAILABLE_PLATFORM_uikitformac = @compileError("unable to translate macro: undefined identifier `uikitformac`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4454:14
 pub const __API_AVAILABLE_PLATFORM_driverkit = @compileError("unable to translate macro: undefined identifier `driverkit`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4456:13
 pub const __API_A = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4460:17
-pub const __API_AVAILABLE2 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4469:13
-pub const __API_AVAILABLE3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4470:13
-pub const __API_AVAILABLE4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4471:13
-pub const __API_AVAILABLE5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4472:13
-pub const __API_AVAILABLE6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4473:13
-pub const __API_AVAILABLE7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4474:13
-pub const __API_AVAILABLE_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4475:13
+pub const __API_AVAILABLE2 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4469:13
+pub const __API_AVAILABLE3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4470:13
+pub const __API_AVAILABLE4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4471:13
+pub const __API_AVAILABLE5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4472:13
+pub const __API_AVAILABLE6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4473:13
+pub const __API_AVAILABLE7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4474:13
+pub const __API_AVAILABLE_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4475:13
 pub const __API_APPLY_TO = @compileError("unable to translate macro: undefined identifier `any`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4477:13
-pub const __API_RANGE_STRINGIFY2 = @compileError("unable to translate C expr: unexpected token .Hash"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4479:13
+pub const __API_RANGE_STRINGIFY2 = @compileError("unable to translate C expr: unexpected token '#'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4479:13
 pub const __API_A_BEGIN = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4481:13
-pub const __API_AVAILABLE_BEGIN2 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4484:13
-pub const __API_AVAILABLE_BEGIN3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4485:13
-pub const __API_AVAILABLE_BEGIN4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4486:13
-pub const __API_AVAILABLE_BEGIN5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4487:13
-pub const __API_AVAILABLE_BEGIN6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4488:13
-pub const __API_AVAILABLE_BEGIN7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4489:13
-pub const __API_AVAILABLE_BEGIN_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4490:13
+pub const __API_AVAILABLE_BEGIN2 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4484:13
+pub const __API_AVAILABLE_BEGIN3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4485:13
+pub const __API_AVAILABLE_BEGIN4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4486:13
+pub const __API_AVAILABLE_BEGIN5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4487:13
+pub const __API_AVAILABLE_BEGIN6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4488:13
+pub const __API_AVAILABLE_BEGIN7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4489:13
+pub const __API_AVAILABLE_BEGIN_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4490:13
 pub const __API_DEPRECATED_PLATFORM_macos = @compileError("unable to translate macro: undefined identifier `macos`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4493:13
 pub const __API_DEPRECATED_PLATFORM_macosx = @compileError("unable to translate macro: undefined identifier `macosx`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4494:13
 pub const __API_DEPRECATED_PLATFORM_ios = @compileError("unable to translate macro: undefined identifier `ios`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4495:13
@@ -2881,37 +2872,37 @@ pub const __API_DEPRECATED_PLATFORM_macCatalyst = @compileError("unable to trans
 pub const __API_DEPRECATED_PLATFORM_uikitformac = @compileError("unable to translate macro: undefined identifier `uikitformac`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4502:14
 pub const __API_DEPRECATED_PLATFORM_driverkit = @compileError("unable to translate macro: undefined identifier `driverkit`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4504:13
 pub const __API_D = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4508:17
-pub const __API_DEPRECATED_MSG3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4517:13
-pub const __API_DEPRECATED_MSG4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4518:13
-pub const __API_DEPRECATED_MSG5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4519:13
-pub const __API_DEPRECATED_MSG6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4520:13
-pub const __API_DEPRECATED_MSG7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4521:13
-pub const __API_DEPRECATED_MSG8 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4522:13
-pub const __API_DEPRECATED_MSG_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4523:13
+pub const __API_DEPRECATED_MSG3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4517:13
+pub const __API_DEPRECATED_MSG4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4518:13
+pub const __API_DEPRECATED_MSG5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4519:13
+pub const __API_DEPRECATED_MSG6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4520:13
+pub const __API_DEPRECATED_MSG7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4521:13
+pub const __API_DEPRECATED_MSG8 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4522:13
+pub const __API_DEPRECATED_MSG_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4523:13
 pub const __API_D_BEGIN = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4525:13
-pub const __API_DEPRECATED_BEGIN_MSG3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4528:13
-pub const __API_DEPRECATED_BEGIN_MSG4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4529:13
-pub const __API_DEPRECATED_BEGIN_MSG5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4530:13
-pub const __API_DEPRECATED_BEGIN_MSG6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4531:13
-pub const __API_DEPRECATED_BEGIN_MSG7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4532:13
-pub const __API_DEPRECATED_BEGIN_MSG8 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4533:13
-pub const __API_DEPRECATED_BEGIN_MSG_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4534:13
+pub const __API_DEPRECATED_BEGIN_MSG3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4528:13
+pub const __API_DEPRECATED_BEGIN_MSG4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4529:13
+pub const __API_DEPRECATED_BEGIN_MSG5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4530:13
+pub const __API_DEPRECATED_BEGIN_MSG6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4531:13
+pub const __API_DEPRECATED_BEGIN_MSG7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4532:13
+pub const __API_DEPRECATED_BEGIN_MSG8 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4533:13
+pub const __API_DEPRECATED_BEGIN_MSG_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4534:13
 pub const __API_R = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4537:17
-pub const __API_DEPRECATED_REP3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4543:13
-pub const __API_DEPRECATED_REP4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4544:13
-pub const __API_DEPRECATED_REP5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4545:13
-pub const __API_DEPRECATED_REP6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4546:13
-pub const __API_DEPRECATED_REP7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4547:13
-pub const __API_DEPRECATED_REP8 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4548:13
-pub const __API_DEPRECATED_REP_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4549:13
+pub const __API_DEPRECATED_REP3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4543:13
+pub const __API_DEPRECATED_REP4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4544:13
+pub const __API_DEPRECATED_REP5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4545:13
+pub const __API_DEPRECATED_REP6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4546:13
+pub const __API_DEPRECATED_REP7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4547:13
+pub const __API_DEPRECATED_REP8 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4548:13
+pub const __API_DEPRECATED_REP_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4549:13
 pub const __API_R_BEGIN = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4552:17
-pub const __API_DEPRECATED_BEGIN_REP3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4558:13
-pub const __API_DEPRECATED_BEGIN_REP4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4559:13
-pub const __API_DEPRECATED_BEGIN_REP5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4560:13
-pub const __API_DEPRECATED_BEGIN_REP6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4561:13
-pub const __API_DEPRECATED_BEGIN_REP7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4562:13
-pub const __API_DEPRECATED_BEGIN_REP8 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4563:13
-pub const __API_DEPRECATED_BEGIN_REP_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4564:13
+pub const __API_DEPRECATED_BEGIN_REP3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4558:13
+pub const __API_DEPRECATED_BEGIN_REP4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4559:13
+pub const __API_DEPRECATED_BEGIN_REP5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4560:13
+pub const __API_DEPRECATED_BEGIN_REP6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4561:13
+pub const __API_DEPRECATED_BEGIN_REP7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4562:13
+pub const __API_DEPRECATED_BEGIN_REP8 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4563:13
+pub const __API_DEPRECATED_BEGIN_REP_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4564:13
 pub const __API_UNAVAILABLE_PLATFORM_macos = @compileError("unable to translate macro: undefined identifier `macos`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4574:13
 pub const __API_UNAVAILABLE_PLATFORM_macosx = @compileError("unable to translate macro: undefined identifier `macosx`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4575:13
 pub const __API_UNAVAILABLE_PLATFORM_ios = @compileError("unable to translate macro: undefined identifier `ios`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4576:13
@@ -2921,23 +2912,23 @@ pub const __API_UNAVAILABLE_PLATFORM_macCatalyst = @compileError("unable to tran
 pub const __API_UNAVAILABLE_PLATFORM_uikitformac = @compileError("unable to translate macro: undefined identifier `uikitformac`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4583:14
 pub const __API_UNAVAILABLE_PLATFORM_driverkit = @compileError("unable to translate macro: undefined identifier `driverkit`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4585:13
 pub const __API_U = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4589:17
-pub const __API_UNAVAILABLE2 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4598:13
-pub const __API_UNAVAILABLE3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4599:13
-pub const __API_UNAVAILABLE4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4600:13
-pub const __API_UNAVAILABLE5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4601:13
-pub const __API_UNAVAILABLE6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4602:13
-pub const __API_UNAVAILABLE7 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4603:13
-pub const __API_UNAVAILABLE_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4604:13
+pub const __API_UNAVAILABLE2 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4598:13
+pub const __API_UNAVAILABLE3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4599:13
+pub const __API_UNAVAILABLE4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4600:13
+pub const __API_UNAVAILABLE5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4601:13
+pub const __API_UNAVAILABLE6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4602:13
+pub const __API_UNAVAILABLE7 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4603:13
+pub const __API_UNAVAILABLE_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4604:13
 pub const __API_U_BEGIN = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4606:13
-pub const __API_UNAVAILABLE_BEGIN2 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4609:13
-pub const __API_UNAVAILABLE_BEGIN3 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4610:13
-pub const __API_UNAVAILABLE_BEGIN4 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4611:13
-pub const __API_UNAVAILABLE_BEGIN5 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4612:13
-pub const __API_UNAVAILABLE_BEGIN6 = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4613:13
+pub const __API_UNAVAILABLE_BEGIN2 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4609:13
+pub const __API_UNAVAILABLE_BEGIN3 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4610:13
+pub const __API_UNAVAILABLE_BEGIN4 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4611:13
+pub const __API_UNAVAILABLE_BEGIN5 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4612:13
+pub const __API_UNAVAILABLE_BEGIN6 = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4613:13
 pub const __API_UNAVAILABLE_BEGIN7 = @compileError("unable to translate macro: undefined identifier `g`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4614:13
-pub const __API_UNAVAILABLE_BEGIN_GET_MACRO = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4615:13
-pub const __swift_compiler_version_at_least = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4664:13
-pub const __SPI_AVAILABLE = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4672:11
+pub const __API_UNAVAILABLE_BEGIN_GET_MACRO = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4615:13
+pub const __swift_compiler_version_at_least = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4664:13
+pub const __SPI_AVAILABLE = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/AvailabilityInternal.h:4672:11
 pub const __OSX_AVAILABLE_STARTING = @compileError("unable to translate macro: undefined identifier `__AVAILABILITY_INTERNAL`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:172:17
 pub const __OSX_AVAILABLE_BUT_DEPRECATED = @compileError("unable to translate macro: undefined identifier `__AVAILABILITY_INTERNAL`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:173:17
 pub const __OSX_AVAILABLE_BUT_DEPRECATED_MSG = @compileError("unable to translate macro: undefined identifier `__AVAILABILITY_INTERNAL`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:175:17
@@ -2945,7 +2936,7 @@ pub const __OS_AVAILABILITY = @compileError("unable to translate macro: undefine
 pub const __OS_AVAILABILITY_MSG = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:199:13
 pub const __OSX_EXTENSION_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `macosx_app_extension`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:216:13
 pub const __IOS_EXTENSION_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `ios_app_extension`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:217:13
-pub const __OS_EXTENSION_UNAVAILABLE = @compileError("unable to translate C expr: unexpected token .Identifier"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:227:9
+pub const __OS_EXTENSION_UNAVAILABLE = @compileError("unable to translate C expr: unexpected token 'Identifier'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:227:9
 pub const __OSX_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `macosx`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:234:13
 pub const __OSX_AVAILABLE = @compileError("unable to translate macro: undefined identifier `macosx`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:235:13
 pub const __OSX_DEPRECATED = @compileError("unable to translate macro: undefined identifier `macosx`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:236:13
@@ -2963,24 +2954,24 @@ pub const __WATCHOS_AVAILABLE = @compileError("unable to translate macro: undefi
 pub const __WATCHOS_DEPRECATED = @compileError("unable to translate macro: undefined identifier `watchos`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:313:13
 pub const __SWIFT_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `swift`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:337:13
 pub const __SWIFT_UNAVAILABLE_MSG = @compileError("unable to translate macro: undefined identifier `swift`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:338:13
-pub const __API_AVAILABLE = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:381:13
-pub const __API_AVAILABLE_BEGIN = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:383:13
+pub const __API_AVAILABLE = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:381:13
+pub const __API_AVAILABLE_BEGIN = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:383:13
 pub const __API_AVAILABLE_END = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:384:13
-pub const __API_DEPRECATED = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:402:13
-pub const __API_DEPRECATED_WITH_REPLACEMENT = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:403:13
-pub const __API_DEPRECATED_BEGIN = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:405:13
+pub const __API_DEPRECATED = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:402:13
+pub const __API_DEPRECATED_WITH_REPLACEMENT = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:403:13
+pub const __API_DEPRECATED_BEGIN = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:405:13
 pub const __API_DEPRECATED_END = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:406:13
-pub const __API_DEPRECATED_WITH_REPLACEMENT_BEGIN = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:408:13
+pub const __API_DEPRECATED_WITH_REPLACEMENT_BEGIN = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:408:13
 pub const __API_DEPRECATED_WITH_REPLACEMENT_END = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:409:13
-pub const __API_UNAVAILABLE = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:419:13
-pub const __API_UNAVAILABLE_BEGIN = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:421:13
+pub const __API_UNAVAILABLE = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:419:13
+pub const __API_UNAVAILABLE_BEGIN = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:421:13
 pub const __API_UNAVAILABLE_END = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:422:13
-pub const __SPI_DEPRECATED = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:475:11
-pub const __SPI_DEPRECATED_WITH_REPLACEMENT = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:479:11
-pub const __CONCAT = @compileError("unable to translate C expr: unexpected token .HashHash"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:113:9
-pub const __STRING = @compileError("unable to translate C expr: unexpected token .Hash"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:114:9
-pub const __const = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:116:9
-pub const __volatile = @compileError("unable to translate C expr: unexpected token .Keyword_volatile"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:118:9
+pub const __SPI_DEPRECATED = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:475:11
+pub const __SPI_DEPRECATED_WITH_REPLACEMENT = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/Availability.h:479:11
+pub const __CONCAT = @compileError("unable to translate C expr: unexpected token '##'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:113:9
+pub const __STRING = @compileError("unable to translate C expr: unexpected token '#'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:114:9
+pub const __const = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:116:9
+pub const __volatile = @compileError("unable to translate C expr: unexpected token 'volatile'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:118:9
 pub const __dead2 = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:155:9
 pub const __pure2 = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:156:9
 pub const __unused = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:161:9
@@ -2991,30 +2982,30 @@ pub const __exported_push = @compileError("unable to translate macro: undefined 
 pub const __exported_pop = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:184:9
 pub const __deprecated = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:196:9
 pub const __deprecated_msg = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:200:10
-pub const __kpi_deprecated = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:211:9
+pub const __kpi_deprecated = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:211:9
 pub const __unavailable = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:217:9
-pub const __restrict = @compileError("unable to translate C expr: unexpected token .Keyword_restrict"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:239:9
+pub const __restrict = @compileError("unable to translate C expr: unexpected token 'restrict'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:239:9
 pub const __disable_tail_calls = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:272:9
 pub const __not_tail_called = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:284:9
 pub const __result_use_check = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:295:9
 pub const __swift_unavailable = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:305:9
-pub const __header_inline = @compileError("unable to translate C expr: unexpected token .Keyword_inline"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:339:10
+pub const __header_inline = @compileError("unable to translate C expr: unexpected token 'inline'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:339:10
 pub const __header_always_inline = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:352:10
 pub const __unreachable_ok_push = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:365:10
 pub const __unreachable_ok_pop = @compileError("unable to translate macro: undefined identifier `_Pragma`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:368:10
 pub const __printflike = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:389:9
 pub const __printf0like = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:391:9
 pub const __scanflike = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:393:9
-pub const __IDSTRING = @compileError("unable to translate C expr: unexpected token .Keyword_static"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:396:9
+pub const __IDSTRING = @compileError("unable to translate C expr: unexpected token 'static'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:396:9
 pub const __COPYRIGHT = @compileError("unable to translate macro: undefined identifier `copyright`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:399:9
 pub const __RCSID = @compileError("unable to translate macro: undefined identifier `rcsid`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:403:9
 pub const __SCCSID = @compileError("unable to translate macro: undefined identifier `sccsid`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:407:9
 pub const __PROJECT_VERSION = @compileError("unable to translate macro: undefined identifier `project_version`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:411:9
-pub const __FBSDID = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:416:9
-pub const __DECONST = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:420:9
-pub const __DEVOLATILE = @compileError("unable to translate C expr: unexpected token .Keyword_volatile"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:424:9
-pub const __DEQUALIFY = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:428:9
-pub const __alloc_size = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:446:9
+pub const __FBSDID = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:416:9
+pub const __DECONST = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:420:9
+pub const __DEVOLATILE = @compileError("unable to translate C expr: unexpected token 'volatile'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:424:9
+pub const __DEQUALIFY = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:428:9
+pub const __alloc_size = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:446:9
 pub const __DARWIN_ALIAS = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:631:9
 pub const __DARWIN_ALIAS_C = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:632:9
 pub const __DARWIN_ALIAS_I = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:633:9
@@ -3027,57 +3018,57 @@ pub const __DARWIN_1050ALIAS_I = @compileError("unable to translate macro: undef
 pub const __DARWIN_1050INODE64 = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:641:9
 pub const __DARWIN_EXTSN = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:643:9
 pub const __DARWIN_EXTSN_C = @compileError("unable to translate macro: undefined identifier `__asm`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:644:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:35:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:41:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:47:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:53:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:59:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:65:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:71:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:77:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:83:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:89:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_5_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:95:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_5_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:101:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_6_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:107:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_6_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:113:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_7_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:119:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_7_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:125:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:131:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:137:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:143:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:149:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_4 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:155:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:161:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:167:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:173:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:179:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:185:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:191:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:197:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:203:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:209:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:215:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:221:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:227:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_4 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:233:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:239:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:245:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:251:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:257:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_4 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:263:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:269:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:275:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:281:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:287:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_4 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:293:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_5 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:299:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_6 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:305:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_7 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:311:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_0 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:317:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_1 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:323:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_2 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:329:9
-pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_3 = @compileError("unable to translate C expr: unexpected token .Eof"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:335:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:35:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:41:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_2_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:47:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:53:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:59:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_3_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:65:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:71:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:77:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:83:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_4_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:89:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_5_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:95:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_5_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:101:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_6_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:107:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_6_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:113:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_7_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:119:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_7_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:125:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:131:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:137:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:143:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:149:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_8_4 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:155:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:161:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:167:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:173:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_9_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:179:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:185:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:191:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:197:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_10_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:203:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:209:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:215:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:221:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:227:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_11_4 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:233:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:239:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:245:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:251:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:257:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_12_4 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:263:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:269:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:275:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:281:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:287:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_4 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:293:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_5 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:299:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_6 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:305:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_13_7 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:311:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_0 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:317:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_1 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:323:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_2 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:329:9
+pub const __DARWIN_ALIAS_STARTING_IPHONE___IPHONE_14_3 = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_symbol_aliasing.h:335:9
 pub const __DARWIN_ALIAS_STARTING = @compileError("unable to translate macro: undefined identifier `__DARWIN_ALIAS_STARTING_MAC_`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:654:9
 pub const __POSIX_C_DEPRECATED = @compileError("unable to translate macro: undefined identifier `___POSIX_C_DEPRECATED_STARTING_`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:717:9
 pub const __XNU_PRIVATE_EXTERN = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:817:9
@@ -3085,34 +3076,31 @@ pub const __compiler_barrier = @compileError("unable to translate macro: undefin
 pub const __enum_open = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:836:9
 pub const __enum_closed = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:837:9
 pub const __enum_options = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:844:9
-pub const __enum_decl = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:857:9
-pub const __enum_closed_decl = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:859:9
-pub const __options_decl = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:861:9
-pub const __options_closed_decl = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:863:9
+pub const __enum_decl = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:857:9
+pub const __enum_closed_decl = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:859:9
+pub const __options_decl = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:861:9
+pub const __options_closed_decl = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/cdefs.h:863:9
 pub const __offsetof = @compileError("unable to translate macro: undefined identifier `__builtin_offsetof`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_types.h:83:9
 pub const __strfmonlike = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/_types.h:31:9
 pub const __strftimelike = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/_types.h:33:9
-pub const SIG_DFL = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:131:9
-pub const SIG_IGN = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:132:9
-pub const SIG_HOLD = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:133:9
-pub const SIG_ERR = @compileError("unable to translate C expr: expected ')'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:134:9
-pub const __darwin_arm_thread_state64_set_pc_fptr = @compileError("unable to translate C expr: expected ')' instead got: Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:351:9
-pub const __darwin_arm_thread_state64_set_lr_fptr = @compileError("unable to translate C expr: expected ')' instead got: Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:360:9
-pub const __darwin_arm_thread_state64_set_sp = @compileError("unable to translate C expr: expected ')' instead got: Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:366:9
-pub const __darwin_arm_thread_state64_set_fp = @compileError("unable to translate C expr: expected ')' instead got: Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:372:9
+pub const SIG_DFL = @compileError("unable to translate C expr: expected ')' instead got '('"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:131:9
+pub const SIG_IGN = @compileError("unable to translate C expr: expected ')' instead got '('"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:132:9
+pub const SIG_HOLD = @compileError("unable to translate C expr: expected ')' instead got '('"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:133:9
+pub const SIG_ERR = @compileError("unable to translate C expr: expected ')' instead got '('"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:134:9
+pub const __darwin_arm_thread_state64_set_pc_fptr = @compileError("unable to translate C expr: expected ')' instead got '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:351:9
+pub const __darwin_arm_thread_state64_set_lr_fptr = @compileError("unable to translate C expr: expected ')' instead got '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:360:9
+pub const __darwin_arm_thread_state64_set_sp = @compileError("unable to translate C expr: expected ')' instead got '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:366:9
+pub const __darwin_arm_thread_state64_set_fp = @compileError("unable to translate C expr: expected ')' instead got '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/mach/arm/_structs.h:372:9
 pub const sv_onstack = @compileError("unable to translate macro: undefined identifier `sv_flags`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/signal.h:361:9
 pub const ru_first = @compileError("unable to translate macro: undefined identifier `ru_ixrss`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/resource.h:164:9
 pub const ru_last = @compileError("unable to translate macro: undefined identifier `ru_nivcsw`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/resource.h:178:9
-pub const __DARWIN_OS_INLINE = @compileError("unable to translate C expr: unexpected token .Keyword_static"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:67:17
-pub const __DARWIN_OSSwapInt16 = @compileError("unable to translate macro: undefined identifier `__builtin_constant_p`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:84:9
-pub const __DARWIN_OSSwapInt32 = @compileError("unable to translate macro: undefined identifier `__builtin_constant_p`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:87:9
-pub const __DARWIN_OSSwapInt64 = @compileError("unable to translate macro: undefined identifier `__builtin_constant_p`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:90:9
-pub const NTOHL = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:143:9
-pub const NTOHS = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:144:9
-pub const NTOHLL = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:145:9
-pub const HTONL = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:146:9
-pub const HTONS = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:147:9
-pub const HTONLL = @compileError("unable to translate C expr: unexpected token .Equal"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:148:9
+pub const __DARWIN_OS_INLINE = @compileError("unable to translate C expr: unexpected token 'static'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/libkern/_OSByteOrder.h:67:17
+pub const NTOHL = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:143:9
+pub const NTOHS = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:144:9
+pub const NTOHLL = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:145:9
+pub const HTONL = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:146:9
+pub const HTONS = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:147:9
+pub const HTONLL = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_endian.h:148:9
 pub const w_termsig = @compileError("unable to translate macro: undefined identifier `w_T`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/wait.h:231:9
 pub const w_coredump = @compileError("unable to translate macro: undefined identifier `w_T`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/wait.h:232:9
 pub const w_retcode = @compileError("unable to translate macro: undefined identifier `w_T`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/wait.h:233:9
@@ -3121,87 +3109,87 @@ pub const w_stopsig = @compileError("unable to translate macro: undefined identi
 pub const __alloca = @compileError("unable to translate macro: undefined identifier `__builtin_alloca`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/alloca.h:40:9
 pub const __sort_noescape = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdlib.h:303:9
 pub const __sgetc = @compileError("TODO unary inc/dec expr"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdio.h:258:9
-pub const __sclearerr = @compileError("unable to translate C expr: expected ')' instead got: AmpersandEqual"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdio.h:282:9
+pub const __sclearerr = @compileError("unable to translate C expr: expected ')' instead got '&='"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/stdio.h:282:9
 pub const __DARWIN_FD_ZERO = @compileError("unable to translate macro: undefined identifier `__builtin_bzero`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_types/_fd_def.h:115:9
-pub const __DARWIN_FD_COPY = @compileError("unable to translate C expr: unexpected token .Asterisk"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_types/_fd_def.h:120:9
-pub const __assert = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/assert.h:87:9
+pub const __DARWIN_FD_COPY = @compileError("unable to translate C expr: unexpected token '*'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/sys/_types/_fd_def.h:120:9
+pub const __assert = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/assert.h:87:9
 pub const assert = @compileError("unable to translate macro: undefined identifier `__func__`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/assert.h:92:9
-pub const static_assert = @compileError("unable to translate C expr: unexpected token .Keyword_static_assert"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/assert.h:107:9
+pub const static_assert = @compileError("unable to translate C expr: unexpected token '_Static_assert'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/assert.h:107:9
 pub const s6_addr = @compileError("unable to translate macro: undefined identifier `__u6_addr`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:160:9
-pub const IN6ADDR_ANY_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:186:9
-pub const IN6ADDR_LOOPBACK_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:189:9
-pub const IN6ADDR_NODELOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:193:9
-pub const IN6ADDR_INTFACELOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:196:9
-pub const IN6ADDR_LINKLOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:199:9
-pub const IN6ADDR_LINKLOCAL_ALLROUTERS_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:202:9
-pub const IN6ADDR_LINKLOCAL_ALLV2ROUTERS_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:205:9
-pub const IN6ADDR_V4MAPPED_INIT = @compileError("unable to translate C expr: unexpected token .LBrace"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:208:9
+pub const IN6ADDR_ANY_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:186:9
+pub const IN6ADDR_LOOPBACK_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:189:9
+pub const IN6ADDR_NODELOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:193:9
+pub const IN6ADDR_INTFACELOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:196:9
+pub const IN6ADDR_LINKLOCAL_ALLNODES_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:199:9
+pub const IN6ADDR_LINKLOCAL_ALLROUTERS_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:202:9
+pub const IN6ADDR_LINKLOCAL_ALLV2ROUTERS_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:205:9
+pub const IN6ADDR_V4MAPPED_INIT = @compileError("unable to translate C expr: unexpected token '{'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:208:9
 pub const IN6ADDR_MULTICAST_PREFIX = @compileError("unable to translate macro: undefined identifier `IN6MASK8`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:211:9
-pub const IN6_IS_ADDR_UNSPECIFIED = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:239:9
-pub const IN6_IS_ADDR_LOOPBACK = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:248:9
-pub const IN6_IS_ADDR_V4COMPAT = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:257:9
-pub const IN6_IS_ADDR_V4MAPPED = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:267:9
+pub const IN6_IS_ADDR_UNSPECIFIED = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:239:9
+pub const IN6_IS_ADDR_LOOPBACK = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:248:9
+pub const IN6_IS_ADDR_V4COMPAT = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:257:9
+pub const IN6_IS_ADDR_V4MAPPED = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netinet6/in6.h:267:9
 pub const h_addr = @compileError("unable to translate macro: undefined identifier `h_addr_list`"); // /nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include/netdb.h:119:9
-pub const INIT_NO_SAL = @compileError("unable to translate C expr: unexpected token .Equal"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:16:9
-pub const _IRQL_requires_max_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:31:9
-pub const _Function_class_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:35:9
-pub const _Out_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:67:9
-pub const _Field_size_bytes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:71:9
-pub const _Field_size_bytes_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:75:9
-pub const _In_reads_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:79:9
-pub const _In_reads_bytes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:83:9
-pub const _In_reads_z_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:87:9
-pub const _In_reads_opt_z_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:91:9
-pub const _In_reads_or_z_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:95:9
-pub const _Out_writes_bytes_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:99:9
-pub const _Out_writes_bytes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:111:9
-pub const _Field_size_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:115:9
-pub const _Success_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:119:9
-pub const _Field_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:123:9
-pub const _In_reads_bytes_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:127:9
-pub const _Out_writes_bytes_to_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:131:9
-pub const _Deref_pre_opt_count_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:135:9
-pub const _Deref_post_opt_count_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:139:9
-pub const _Outptr_result_buffer_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:143:9
-pub const _Outptr_result_buffer_maybenull_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:147:9
-pub const _Inout_updates_bytes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:151:9
-pub const _Inout_updates_bytes_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:155:9
-pub const _Post_writable_byte_size_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:179:9
-pub const __drv_allocatesMem = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:183:9
-pub const __drv_freesMem = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:187:9
-pub const _In_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:203:9
-pub const _When_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:207:9
-pub const _Post_equal_to_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:211:9
-pub const _Deref_in_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:215:9
-pub const _Deref_out_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:219:9
-pub const _Out_writes_all_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:223:9
-pub const _Out_writes_to_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:227:9
-pub const _Out_writes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:231:9
-pub const __analysis_assume = @compileError("unable to translate C expr: unexpected token .Eof"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:239:9
-pub const _Out_writes_bytes_all_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:243:9
-pub const _Analysis_assume_ = @compileError("unable to translate C expr: unexpected token .Eof"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:247:9
-pub const _Ret_range_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:251:9
-pub const _Ret_writes_bytes_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:255:9
-pub const _In_reads_opt_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:267:9
-pub const _At_ = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/quic_sal_stub.h:271:9
-pub const DEFINE_ENUM_FLAG_OPERATORS = @compileError("unable to translate C expr: unexpected token .Eof"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:73:9
-pub const QUIC_STATUS_SUCCESS = @compileError("unable to translate C expr: expected ')' instead got: IntegerLiteral"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:104:9
-pub const RTL_FIELD_SIZE = @compileError("unable to translate C expr: unexpected token .LParen"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:161:9
-pub const QUIC_ADDR_V4_PORT_OFFSET = @compileError("unable to translate macro: undefined identifier `sin_port`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:166:9
-pub const QUIC_ADDR_V4_IP_OFFSET = @compileError("unable to translate macro: undefined identifier `sin_addr`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:167:9
-pub const QUIC_ADDR_V6_PORT_OFFSET = @compileError("unable to translate macro: undefined identifier `sin6_port`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:169:9
-pub const QUIC_ADDR_V6_IP_OFFSET = @compileError("unable to translate macro: undefined identifier `sin6_addr`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:170:9
-pub const QUIC_NO_SANITIZE = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:199:9
-pub const sprintf_s = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:209:9
-pub const _vsnprintf_s = @compileError("unable to translate C expr: expected ')'"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:210:9
-pub const UPDATE_HASH = @compileError("unable to translate macro: undefined identifier `Hash`"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic_posix.h:353:9
-pub const MsQuicOpen2 = @compileError("unable to translate C expr: unexpected token .Keyword_const"); // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:1471:9
+pub const INIT_NO_SAL = @compileError("unable to translate C expr: unexpected token '='"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:16:9
+pub const _IRQL_requires_max_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:31:9
+pub const _Function_class_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:35:9
+pub const _Out_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:67:9
+pub const _Field_size_bytes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:71:9
+pub const _Field_size_bytes_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:75:9
+pub const _In_reads_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:79:9
+pub const _In_reads_bytes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:83:9
+pub const _In_reads_z_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:87:9
+pub const _In_reads_opt_z_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:91:9
+pub const _In_reads_or_z_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:95:9
+pub const _Out_writes_bytes_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:99:9
+pub const _Out_writes_bytes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:111:9
+pub const _Field_size_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:115:9
+pub const _Success_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:119:9
+pub const _Field_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:123:9
+pub const _In_reads_bytes_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:127:9
+pub const _Out_writes_bytes_to_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:131:9
+pub const _Deref_pre_opt_count_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:135:9
+pub const _Deref_post_opt_count_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:139:9
+pub const _Outptr_result_buffer_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:143:9
+pub const _Outptr_result_buffer_maybenull_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:147:9
+pub const _Inout_updates_bytes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:151:9
+pub const _Inout_updates_bytes_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:155:9
+pub const _Post_writable_byte_size_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:179:9
+pub const __drv_allocatesMem = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:183:9
+pub const __drv_freesMem = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:187:9
+pub const _In_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:203:9
+pub const _When_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:207:9
+pub const _Post_equal_to_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:211:9
+pub const _Deref_in_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:215:9
+pub const _Deref_out_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:219:9
+pub const _Out_writes_all_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:223:9
+pub const _Out_writes_to_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:227:9
+pub const _Out_writes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:231:9
+pub const __analysis_assume = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:239:9
+pub const _Out_writes_bytes_all_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:243:9
+pub const _Analysis_assume_ = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:247:9
+pub const _Ret_range_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:251:9
+pub const _Ret_writes_bytes_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:255:9
+pub const _In_reads_opt_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:267:9
+pub const _At_ = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/quic_sal_stub.h:271:9
+pub const DEFINE_ENUM_FLAG_OPERATORS = @compileError("unable to translate C expr: unexpected token 'Eof'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:73:9
+pub const QUIC_STATUS_SUCCESS = @compileError("unable to translate C expr: expected ')' instead got 'IntegerLiteral'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:104:9
+pub const RTL_FIELD_SIZE = @compileError("unable to translate C expr: unexpected token '('"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:161:9
+pub const QUIC_ADDR_V4_PORT_OFFSET = @compileError("unable to translate macro: undefined identifier `sin_port`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:166:9
+pub const QUIC_ADDR_V4_IP_OFFSET = @compileError("unable to translate macro: undefined identifier `sin_addr`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:167:9
+pub const QUIC_ADDR_V6_PORT_OFFSET = @compileError("unable to translate macro: undefined identifier `sin6_port`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:169:9
+pub const QUIC_ADDR_V6_IP_OFFSET = @compileError("unable to translate macro: undefined identifier `sin6_addr`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:170:9
+pub const QUIC_NO_SANITIZE = @compileError("unable to translate macro: undefined identifier `__attribute__`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:199:9
+pub const sprintf_s = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:209:9
+pub const _vsnprintf_s = @compileError("unable to translate C expr: expected ')' instead got '...'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:210:9
+pub const UPDATE_HASH = @compileError("unable to translate macro: undefined identifier `Hash`"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic_posix.h:353:9
+pub const MsQuicOpen2 = @compileError("unable to translate C expr: unexpected token 'const'"); // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:1467:9
 pub const __llvm__ = @as(c_int, 1);
 pub const __clang__ = @as(c_int, 1);
-pub const __clang_major__ = @as(c_int, 13);
+pub const __clang_major__ = @as(c_int, 15);
 pub const __clang_minor__ = @as(c_int, 0);
-pub const __clang_patchlevel__ = @as(c_int, 1);
-pub const __clang_version__ = "13.0.1 (git@github.com:ziglang/zig-bootstrap.git 81f0e6c5b902ead84753490db4f0007d08df964a)";
+pub const __clang_patchlevel__ = @as(c_int, 3);
+pub const __clang_version__ = "15.0.3 (git@github.com:ziglang/zig-bootstrap.git 0ce789d0f7a4d89fdc4d9571209b6874d3e260c9)";
 pub const __GNUC__ = @as(c_int, 4);
 pub const __GNUC_MINOR__ = @as(c_int, 2);
 pub const __GNUC_PATCHLEVEL__ = @as(c_int, 1);
@@ -3218,13 +3206,12 @@ pub const __OPENCL_MEMORY_SCOPE_DEVICE = @as(c_int, 2);
 pub const __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES = @as(c_int, 3);
 pub const __OPENCL_MEMORY_SCOPE_SUB_GROUP = @as(c_int, 4);
 pub const __PRAGMA_REDEFINE_EXTNAME = @as(c_int, 1);
-pub const __VERSION__ = "Clang 13.0.1 (git@github.com:ziglang/zig-bootstrap.git 81f0e6c5b902ead84753490db4f0007d08df964a)";
+pub const __VERSION__ = "Clang 15.0.3 (git@github.com:ziglang/zig-bootstrap.git 0ce789d0f7a4d89fdc4d9571209b6874d3e260c9)";
 pub const __OBJC_BOOL_IS_BOOL = @as(c_int, 1);
 pub const __CONSTANT_CFSTRINGS__ = @as(c_int, 1);
 pub const __BLOCKS__ = @as(c_int, 1);
 pub const __clang_literal_encoding__ = "UTF-8";
 pub const __clang_wide_literal_encoding__ = "UTF-32";
-pub const __OPTIMIZE__ = @as(c_int, 1);
 pub const __ORDER_LITTLE_ENDIAN__ = @as(c_int, 1234);
 pub const __ORDER_BIG_ENDIAN__ = @as(c_int, 4321);
 pub const __ORDER_PDP_ENDIAN__ = @as(c_int, 3412);
@@ -3233,19 +3220,33 @@ pub const __LITTLE_ENDIAN__ = @as(c_int, 1);
 pub const _LP64 = @as(c_int, 1);
 pub const __LP64__ = @as(c_int, 1);
 pub const __CHAR_BIT__ = @as(c_int, 8);
+pub const __BOOL_WIDTH__ = @as(c_int, 8);
+pub const __SHRT_WIDTH__ = @as(c_int, 16);
+pub const __INT_WIDTH__ = @as(c_int, 32);
+pub const __LONG_WIDTH__ = @as(c_int, 64);
+pub const __LLONG_WIDTH__ = @as(c_int, 64);
+pub const __BITINT_MAXWIDTH__ = @as(c_int, 128);
 pub const __SCHAR_MAX__ = @as(c_int, 127);
 pub const __SHRT_MAX__ = @as(c_int, 32767);
 pub const __INT_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
 pub const __LONG_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_long, 9223372036854775807, .decimal);
 pub const __LONG_LONG_MAX__ = @as(c_longlong, 9223372036854775807);
 pub const __WCHAR_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
+pub const __WCHAR_WIDTH__ = @as(c_int, 32);
 pub const __WINT_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
+pub const __WINT_WIDTH__ = @as(c_int, 32);
 pub const __INTMAX_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_long, 9223372036854775807, .decimal);
+pub const __INTMAX_WIDTH__ = @as(c_int, 64);
 pub const __SIZE_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_ulong, 18446744073709551615, .decimal);
+pub const __SIZE_WIDTH__ = @as(c_int, 64);
 pub const __UINTMAX_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_ulong, 18446744073709551615, .decimal);
+pub const __UINTMAX_WIDTH__ = @as(c_int, 64);
 pub const __PTRDIFF_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_long, 9223372036854775807, .decimal);
+pub const __PTRDIFF_WIDTH__ = @as(c_int, 64);
 pub const __INTPTR_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_long, 9223372036854775807, .decimal);
+pub const __INTPTR_WIDTH__ = @as(c_int, 64);
 pub const __UINTPTR_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_ulong, 18446744073709551615, .decimal);
+pub const __UINTPTR_WIDTH__ = @as(c_int, 64);
 pub const __SIZEOF_DOUBLE__ = @as(c_int, 8);
 pub const __SIZEOF_FLOAT__ = @as(c_int, 4);
 pub const __SIZEOF_INT__ = @as(c_int, 4);
@@ -3267,36 +3268,28 @@ pub const __UINTMAX_FMTo__ = "lo";
 pub const __UINTMAX_FMTu__ = "lu";
 pub const __UINTMAX_FMTx__ = "lx";
 pub const __UINTMAX_FMTX__ = "lX";
-pub const __INTMAX_WIDTH__ = @as(c_int, 64);
 pub const __PTRDIFF_TYPE__ = c_long;
 pub const __PTRDIFF_FMTd__ = "ld";
 pub const __PTRDIFF_FMTi__ = "li";
-pub const __PTRDIFF_WIDTH__ = @as(c_int, 64);
 pub const __INTPTR_TYPE__ = c_long;
 pub const __INTPTR_FMTd__ = "ld";
 pub const __INTPTR_FMTi__ = "li";
-pub const __INTPTR_WIDTH__ = @as(c_int, 64);
 pub const __SIZE_TYPE__ = c_ulong;
 pub const __SIZE_FMTo__ = "lo";
 pub const __SIZE_FMTu__ = "lu";
 pub const __SIZE_FMTx__ = "lx";
 pub const __SIZE_FMTX__ = "lX";
-pub const __SIZE_WIDTH__ = @as(c_int, 64);
 pub const __WCHAR_TYPE__ = c_int;
-pub const __WCHAR_WIDTH__ = @as(c_int, 32);
 pub const __WINT_TYPE__ = c_int;
-pub const __WINT_WIDTH__ = @as(c_int, 32);
-pub const __SIG_ATOMIC_WIDTH__ = @as(c_int, 32);
 pub const __SIG_ATOMIC_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
+pub const __SIG_ATOMIC_WIDTH__ = @as(c_int, 32);
 pub const __CHAR16_TYPE__ = c_ushort;
 pub const __CHAR32_TYPE__ = c_uint;
-pub const __UINTMAX_WIDTH__ = @as(c_int, 64);
 pub const __UINTPTR_TYPE__ = c_ulong;
 pub const __UINTPTR_FMTo__ = "lo";
 pub const __UINTPTR_FMTu__ = "lu";
 pub const __UINTPTR_FMTx__ = "lx";
 pub const __UINTPTR_FMTX__ = "lX";
-pub const __UINTPTR_WIDTH__ = @as(c_int, 64);
 pub const __FLT16_HAS_DENORM__ = @as(c_int, 1);
 pub const __FLT16_DIG__ = @as(c_int, 3);
 pub const __FLT16_DECIMAL_DIG__ = @as(c_int, 5);
@@ -3398,6 +3391,7 @@ pub const __UINT64_MAX__ = @as(c_ulonglong, 18446744073709551615);
 pub const __INT64_MAX__ = @as(c_longlong, 9223372036854775807);
 pub const __INT_LEAST8_TYPE__ = i8;
 pub const __INT_LEAST8_MAX__ = @as(c_int, 127);
+pub const __INT_LEAST8_WIDTH__ = @as(c_int, 8);
 pub const __INT_LEAST8_FMTd__ = "hhd";
 pub const __INT_LEAST8_FMTi__ = "hhi";
 pub const __UINT_LEAST8_TYPE__ = u8;
@@ -3408,6 +3402,7 @@ pub const __UINT_LEAST8_FMTx__ = "hhx";
 pub const __UINT_LEAST8_FMTX__ = "hhX";
 pub const __INT_LEAST16_TYPE__ = c_short;
 pub const __INT_LEAST16_MAX__ = @as(c_int, 32767);
+pub const __INT_LEAST16_WIDTH__ = @as(c_int, 16);
 pub const __INT_LEAST16_FMTd__ = "hd";
 pub const __INT_LEAST16_FMTi__ = "hi";
 pub const __UINT_LEAST16_TYPE__ = c_ushort;
@@ -3418,6 +3413,7 @@ pub const __UINT_LEAST16_FMTx__ = "hx";
 pub const __UINT_LEAST16_FMTX__ = "hX";
 pub const __INT_LEAST32_TYPE__ = c_int;
 pub const __INT_LEAST32_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
+pub const __INT_LEAST32_WIDTH__ = @as(c_int, 32);
 pub const __INT_LEAST32_FMTd__ = "d";
 pub const __INT_LEAST32_FMTi__ = "i";
 pub const __UINT_LEAST32_TYPE__ = c_uint;
@@ -3428,6 +3424,7 @@ pub const __UINT_LEAST32_FMTx__ = "x";
 pub const __UINT_LEAST32_FMTX__ = "X";
 pub const __INT_LEAST64_TYPE__ = c_longlong;
 pub const __INT_LEAST64_MAX__ = @as(c_longlong, 9223372036854775807);
+pub const __INT_LEAST64_WIDTH__ = @as(c_int, 64);
 pub const __INT_LEAST64_FMTd__ = "lld";
 pub const __INT_LEAST64_FMTi__ = "lli";
 pub const __UINT_LEAST64_TYPE__ = c_ulonglong;
@@ -3438,6 +3435,7 @@ pub const __UINT_LEAST64_FMTx__ = "llx";
 pub const __UINT_LEAST64_FMTX__ = "llX";
 pub const __INT_FAST8_TYPE__ = i8;
 pub const __INT_FAST8_MAX__ = @as(c_int, 127);
+pub const __INT_FAST8_WIDTH__ = @as(c_int, 8);
 pub const __INT_FAST8_FMTd__ = "hhd";
 pub const __INT_FAST8_FMTi__ = "hhi";
 pub const __UINT_FAST8_TYPE__ = u8;
@@ -3448,6 +3446,7 @@ pub const __UINT_FAST8_FMTx__ = "hhx";
 pub const __UINT_FAST8_FMTX__ = "hhX";
 pub const __INT_FAST16_TYPE__ = c_short;
 pub const __INT_FAST16_MAX__ = @as(c_int, 32767);
+pub const __INT_FAST16_WIDTH__ = @as(c_int, 16);
 pub const __INT_FAST16_FMTd__ = "hd";
 pub const __INT_FAST16_FMTi__ = "hi";
 pub const __UINT_FAST16_TYPE__ = c_ushort;
@@ -3458,6 +3457,7 @@ pub const __UINT_FAST16_FMTx__ = "hx";
 pub const __UINT_FAST16_FMTX__ = "hX";
 pub const __INT_FAST32_TYPE__ = c_int;
 pub const __INT_FAST32_MAX__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
+pub const __INT_FAST32_WIDTH__ = @as(c_int, 32);
 pub const __INT_FAST32_FMTd__ = "d";
 pub const __INT_FAST32_FMTi__ = "i";
 pub const __UINT_FAST32_TYPE__ = c_uint;
@@ -3468,6 +3468,7 @@ pub const __UINT_FAST32_FMTx__ = "x";
 pub const __UINT_FAST32_FMTX__ = "X";
 pub const __INT_FAST64_TYPE__ = c_longlong;
 pub const __INT_FAST64_MAX__ = @as(c_longlong, 9223372036854775807);
+pub const __INT_FAST64_WIDTH__ = @as(c_int, 64);
 pub const __INT_FAST64_FMTd__ = "lld";
 pub const __INT_FAST64_FMTi__ = "lli";
 pub const __UINT_FAST64_TYPE__ = c_ulonglong;
@@ -3476,6 +3477,7 @@ pub const __UINT_FAST64_FMTo__ = "llo";
 pub const __UINT_FAST64_FMTu__ = "llu";
 pub const __UINT_FAST64_FMTx__ = "llx";
 pub const __UINT_FAST64_FMTX__ = "llX";
+pub const __NO_MATH_ERRNO__ = @as(c_int, 1);
 pub const __FINITE_MATH_ONLY__ = @as(c_int, 0);
 pub const __GNUC_STDC_INLINE__ = @as(c_int, 1);
 pub const __GCC_ATOMIC_TEST_AND_SET_TRUEVAL = @as(c_int, 1);
@@ -3499,9 +3501,9 @@ pub const __GCC_ATOMIC_INT_LOCK_FREE = @as(c_int, 2);
 pub const __GCC_ATOMIC_LONG_LOCK_FREE = @as(c_int, 2);
 pub const __GCC_ATOMIC_LLONG_LOCK_FREE = @as(c_int, 2);
 pub const __GCC_ATOMIC_POINTER_LOCK_FREE = @as(c_int, 2);
+pub const __NO_INLINE__ = @as(c_int, 1);
 pub const __PIC__ = @as(c_int, 2);
 pub const __pic__ = @as(c_int, 2);
-pub const __FLT_EVAL_METHOD__ = @as(c_int, 0);
 pub const __FLT_RADIX__ = @as(c_int, 2);
 pub const __DECIMAL_DIG__ = __LDBL_DECIMAL_DIG__;
 pub const __SSP_STRONG__ = @as(c_int, 2);
@@ -3541,13 +3543,12 @@ pub const __ARM_FEATURE_FP16_SCALAR_ARITHMETIC = @as(c_int, 1);
 pub const __ARM_FEATURE_DOTPROD = @as(c_int, 1);
 pub const __ARM_FEATURE_ATOMICS = @as(c_int, 1);
 pub const __ARM_FEATURE_FP16_FML = @as(c_int, 1);
-pub const __ARM_FEATURE_COMPLEX = @as(c_int, 1);
-pub const __ARM_FEATURE_JCVT = @as(c_int, 1);
-pub const __ARM_FEATURE_QRDMX = @as(c_int, 1);
 pub const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1 = @as(c_int, 1);
 pub const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2 = @as(c_int, 1);
 pub const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4 = @as(c_int, 1);
 pub const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 = @as(c_int, 1);
+pub const __FP_FAST_FMA = @as(c_int, 1);
+pub const __FP_FAST_FMAF = @as(c_int, 1);
 pub const __AARCH64_SIMD__ = @as(c_int, 1);
 pub const __ARM64_ARCH_8__ = @as(c_int, 1);
 pub const __ARM_NEON__ = @as(c_int, 1);
@@ -3560,7 +3561,7 @@ pub const __STDC_NO_THREADS__ = @as(c_int, 1);
 pub const __strong = "";
 pub const __unsafe_unretained = "";
 pub const __DYNAMIC__ = @as(c_int, 1);
-pub const __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 120301, .decimal);
+pub const __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = @import("std").zig.c_translation.promoteIntLiteral(c_int, 130000, .decimal);
 pub const __MACH__ = @as(c_int, 1);
 pub const __STDC__ = @as(c_int, 1);
 pub const __STDC_HOSTED__ = @as(c_int, 1);
@@ -3925,7 +3926,7 @@ pub const _DARWIN_FEATURE_ONLY_VERS_1050 = @as(c_int, 1);
 pub const _DARWIN_FEATURE_ONLY_UNIX_CONFORMANCE = @as(c_int, 1);
 pub const _DARWIN_FEATURE_UNIX_CONFORMANCE = @as(c_int, 3);
 pub inline fn __CAST_AWAY_QUALIFIER(variable: anytype, qualifier: anytype, @"type": anytype) @TypeOf(@"type"(c_long)(variable)) {
-    _ = qualifier;
+    _ = @TypeOf(qualifier);
     return @"type"(c_long)(variable);
 }
 pub const __TYPES_H_ = "";
@@ -4359,6 +4360,15 @@ pub inline fn __DARWIN_OSSwapConstInt64(x: anytype) __uint64_t {
 }
 pub const _OS_OSBYTEORDERARM_H = "";
 pub const _ARM_ARCH_H = "";
+pub inline fn __DARWIN_OSSwapInt16(x: anytype) __uint16_t {
+    return @import("std").zig.c_translation.cast(__uint16_t, if (__builtin_constant_p(x)) __DARWIN_OSSwapConstInt16(x) else _OSSwapInt16(x));
+}
+pub inline fn __DARWIN_OSSwapInt32(x: anytype) @TypeOf(if (__builtin_constant_p(x)) __DARWIN_OSSwapConstInt32(x) else _OSSwapInt32(x)) {
+    return if (__builtin_constant_p(x)) __DARWIN_OSSwapConstInt32(x) else _OSSwapInt32(x);
+}
+pub inline fn __DARWIN_OSSwapInt64(x: anytype) @TypeOf(if (__builtin_constant_p(x)) __DARWIN_OSSwapConstInt64(x) else _OSSwapInt64(x)) {
+    return if (__builtin_constant_p(x)) __DARWIN_OSSwapConstInt64(x) else _OSSwapInt64(x);
+}
 pub inline fn ntohs(x: anytype) @TypeOf(__DARWIN_OSSwapInt16(x)) {
     return __DARWIN_OSSwapInt16(x);
 }
@@ -4388,7 +4398,7 @@ pub const RAND_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0
 pub const MB_CUR_MAX = __mb_cur_max;
 pub const _MALLOC_UNDERSCORE_MALLOC_H_ = "";
 pub inline fn __swift_unavailable_on(osx_msg: anytype, ios_msg: anytype) @TypeOf(__swift_unavailable(osx_msg)) {
-    _ = ios_msg;
+    _ = @TypeOf(ios_msg);
     return __swift_unavailable(osx_msg);
 }
 pub const _DEV_T = "";
@@ -4507,8 +4517,8 @@ pub const _FD_SET = "";
 pub const __DARWIN_FD_SETSIZE = @as(c_int, 1024);
 pub const __DARWIN_NBBY = @as(c_int, 8);
 pub const __DARWIN_NFDBITS = @import("std").zig.c_translation.sizeof(__int32_t) * __DARWIN_NBBY;
-pub inline fn __DARWIN_howmany(x: anytype, y: anytype) @TypeOf(if ((x % y) == @as(c_int, 0)) x / y else (x / y) + @as(c_int, 1)) {
-    return if ((x % y) == @as(c_int, 0)) x / y else (x / y) + @as(c_int, 1);
+pub inline fn __DARWIN_howmany(x: anytype, y: anytype) @TypeOf(if ((x % y) == @as(c_int, 0)) @import("std").zig.c_translation.MacroArithmetic.div(x, y) else @import("std").zig.c_translation.MacroArithmetic.div(x, y) + @as(c_int, 1)) {
+    return if ((x % y) == @as(c_int, 0)) @import("std").zig.c_translation.MacroArithmetic.div(x, y) else @import("std").zig.c_translation.MacroArithmetic.div(x, y) + @as(c_int, 1);
 }
 pub inline fn __DARWIN_FD_SET(n: anytype, p: anytype) @TypeOf(__darwin_fd_set(n, p)) {
     return __darwin_fd_set(n, p);
@@ -5280,11 +5290,11 @@ pub const IPV6PORT_RESERVEDMIN = @as(c_int, 600);
 pub const IPV6PORT_RESERVEDMAX = IPV6PORT_RESERVED - @as(c_int, 1);
 pub const INET6_ADDRSTRLEN = @as(c_int, 46);
 pub const SIN6_LEN = "";
-pub inline fn IN6_ARE_ADDR_EQUAL(a: anytype, b: anytype) @TypeOf(memcmp(&a.*.s6_addr[@as(c_int, 0)], &b.*.s6_addr[@as(c_int, 0)], @import("std").zig.c_translation.sizeof(struct_in6_addr)) == @as(c_int, 0)) {
-    return memcmp(&a.*.s6_addr[@as(c_int, 0)], &b.*.s6_addr[@as(c_int, 0)], @import("std").zig.c_translation.sizeof(struct_in6_addr)) == @as(c_int, 0);
+pub inline fn IN6_ARE_ADDR_EQUAL(a: anytype, b: anytype) @TypeOf(memcmp(&a.*.s6_addr[@intCast(usize, @as(c_int, 0))], &b.*.s6_addr[@intCast(usize, @as(c_int, 0))], @import("std").zig.c_translation.sizeof(struct_in6_addr)) == @as(c_int, 0)) {
+    return memcmp(&a.*.s6_addr[@intCast(usize, @as(c_int, 0))], &b.*.s6_addr[@intCast(usize, @as(c_int, 0))], @import("std").zig.c_translation.sizeof(struct_in6_addr)) == @as(c_int, 0);
 }
-pub inline fn IN6_IS_ADDR_6TO4(x: anytype) @TypeOf(ntohs(x.*.s6_addr16[@as(c_int, 0)]) == @as(c_int, 0x2002)) {
-    return ntohs(x.*.s6_addr16[@as(c_int, 0)]) == @as(c_int, 0x2002);
+pub inline fn IN6_IS_ADDR_6TO4(x: anytype) @TypeOf(ntohs(x.*.s6_addr16[@intCast(usize, @as(c_int, 0))]) == @as(c_int, 0x2002)) {
+    return ntohs(x.*.s6_addr16[@intCast(usize, @as(c_int, 0))]) == @as(c_int, 0x2002);
 }
 pub const __IPV6_ADDR_SCOPE_NODELOCAL = @as(c_int, 0x01);
 pub const __IPV6_ADDR_SCOPE_INTFACELOCAL = @as(c_int, 0x01);
@@ -5292,17 +5302,17 @@ pub const __IPV6_ADDR_SCOPE_LINKLOCAL = @as(c_int, 0x02);
 pub const __IPV6_ADDR_SCOPE_SITELOCAL = @as(c_int, 0x05);
 pub const __IPV6_ADDR_SCOPE_ORGLOCAL = @as(c_int, 0x08);
 pub const __IPV6_ADDR_SCOPE_GLOBAL = @as(c_int, 0x0e);
-pub inline fn IN6_IS_ADDR_LINKLOCAL(a: anytype) @TypeOf((a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xc0)) == @as(c_int, 0x80))) {
-    return (a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xc0)) == @as(c_int, 0x80));
+pub inline fn IN6_IS_ADDR_LINKLOCAL(a: anytype) @TypeOf((a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xc0)) == @as(c_int, 0x80))) {
+    return (a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xc0)) == @as(c_int, 0x80));
 }
-pub inline fn IN6_IS_ADDR_SITELOCAL(a: anytype) @TypeOf((a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xc0)) == @as(c_int, 0xc0))) {
-    return (a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xc0)) == @as(c_int, 0xc0));
+pub inline fn IN6_IS_ADDR_SITELOCAL(a: anytype) @TypeOf((a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xc0)) == @as(c_int, 0xc0))) {
+    return (a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfe)) and ((a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xc0)) == @as(c_int, 0xc0));
 }
-pub inline fn IN6_IS_ADDR_MULTICAST(a: anytype) @TypeOf(a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xff)) {
-    return a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xff);
+pub inline fn IN6_IS_ADDR_MULTICAST(a: anytype) @TypeOf(a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xff)) {
+    return a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xff);
 }
-pub inline fn IPV6_ADDR_MC_FLAGS(a: anytype) @TypeOf(a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xf0)) {
-    return a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0xf0);
+pub inline fn IPV6_ADDR_MC_FLAGS(a: anytype) @TypeOf(a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xf0)) {
+    return a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0xf0);
 }
 pub const IPV6_ADDR_MC_FLAGS_TRANSIENT = @as(c_int, 0x10);
 pub const IPV6_ADDR_MC_FLAGS_PREFIX = @as(c_int, 0x20);
@@ -5310,11 +5320,11 @@ pub const IPV6_ADDR_MC_FLAGS_UNICAST_BASED = IPV6_ADDR_MC_FLAGS_TRANSIENT | IPV6
 pub inline fn IN6_IS_ADDR_UNICAST_BASED_MULTICAST(a: anytype) @TypeOf((IN6_IS_ADDR_MULTICAST(a) != 0) and (IPV6_ADDR_MC_FLAGS(a) == IPV6_ADDR_MC_FLAGS_UNICAST_BASED)) {
     return (IN6_IS_ADDR_MULTICAST(a) != 0) and (IPV6_ADDR_MC_FLAGS(a) == IPV6_ADDR_MC_FLAGS_UNICAST_BASED);
 }
-pub inline fn IN6_IS_ADDR_UNIQUE_LOCAL(a: anytype) @TypeOf((a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfc)) or (a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfd))) {
-    return (a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfc)) or (a.*.s6_addr[@as(c_int, 0)] == @as(c_int, 0xfd));
+pub inline fn IN6_IS_ADDR_UNIQUE_LOCAL(a: anytype) @TypeOf((a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfc)) or (a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfd))) {
+    return (a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfc)) or (a.*.s6_addr[@intCast(usize, @as(c_int, 0))] == @as(c_int, 0xfd));
 }
-pub inline fn __IPV6_ADDR_MC_SCOPE(a: anytype) @TypeOf(a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0x0f)) {
-    return a.*.s6_addr[@as(c_int, 1)] & @as(c_int, 0x0f);
+pub inline fn __IPV6_ADDR_MC_SCOPE(a: anytype) @TypeOf(a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0x0f)) {
+    return a.*.s6_addr[@intCast(usize, @as(c_int, 1))] & @as(c_int, 0x0f);
 }
 pub inline fn IN6_IS_ADDR_MC_NODELOCAL(a: anytype) @TypeOf((IN6_IS_ADDR_MULTICAST(a) != 0) and (__IPV6_ADDR_MC_SCOPE(a) == __IPV6_ADDR_SCOPE_NODELOCAL)) {
     return (IN6_IS_ADDR_MULTICAST(a) != 0) and (__IPV6_ADDR_MC_SCOPE(a) == __IPV6_ADDR_SCOPE_NODELOCAL);
@@ -6005,29 +6015,29 @@ pub const ENOKEY = @as(c_int, 126);
 pub const ERROR_BASE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 200000000, .decimal);
 pub const TLS_ERROR_BASE = @as(c_int, 256) + ERROR_BASE;
 pub const CERT_ERROR_BASE = @as(c_int, 512) + ERROR_BASE;
-pub const QUIC_STATUS_PENDING = @as(QUIC_STATUS, @as(c_int, 2));
-pub const QUIC_STATUS_CONTINUE = @as(QUIC_STATUS, @as(c_int, 1));
-pub const QUIC_STATUS_OUT_OF_MEMORY = @as(QUIC_STATUS, ENOMEM);
-pub const QUIC_STATUS_INVALID_PARAMETER = @as(QUIC_STATUS, EINVAL);
-pub const QUIC_STATUS_INVALID_STATE = @as(QUIC_STATUS, EPERM);
-pub const QUIC_STATUS_NOT_SUPPORTED = @as(QUIC_STATUS, EOPNOTSUPP);
-pub const QUIC_STATUS_NOT_FOUND = @as(QUIC_STATUS, ENOENT);
-pub const QUIC_STATUS_BUFFER_TOO_SMALL = @as(QUIC_STATUS, EOVERFLOW);
-pub const QUIC_STATUS_HANDSHAKE_FAILURE = @as(QUIC_STATUS, ECONNABORTED);
-pub const QUIC_STATUS_ABORTED = @as(QUIC_STATUS, ECANCELED);
-pub const QUIC_STATUS_ADDRESS_IN_USE = @as(QUIC_STATUS, EADDRINUSE);
-pub const QUIC_STATUS_INVALID_ADDRESS = @as(QUIC_STATUS, EAFNOSUPPORT);
-pub const QUIC_STATUS_CONNECTION_TIMEOUT = @as(QUIC_STATUS, ETIMEDOUT);
-pub const QUIC_STATUS_CONNECTION_IDLE = @as(QUIC_STATUS, ETIME);
-pub const QUIC_STATUS_INTERNAL_ERROR = @as(QUIC_STATUS, EIO);
-pub const QUIC_STATUS_CONNECTION_REFUSED = @as(QUIC_STATUS, ECONNREFUSED);
-pub const QUIC_STATUS_PROTOCOL_ERROR = @as(QUIC_STATUS, EPROTO);
-pub const QUIC_STATUS_VER_NEG_ERROR = @as(QUIC_STATUS, EPROTONOSUPPORT);
-pub const QUIC_STATUS_UNREACHABLE = @as(QUIC_STATUS, EHOSTUNREACH);
-pub const QUIC_STATUS_TLS_ERROR = @as(QUIC_STATUS, ENOKEY);
-pub const QUIC_STATUS_USER_CANCELED = @as(QUIC_STATUS, EOWNERDEAD);
-pub const QUIC_STATUS_ALPN_NEG_FAILURE = @as(QUIC_STATUS, ENOPROTOOPT);
-pub const QUIC_STATUS_STREAM_LIMIT_REACHED = @as(QUIC_STATUS, ESTRPIPE);
+pub const QUIC_STATUS_PENDING = QUIC_STATUS - @as(c_int, 2);
+pub const QUIC_STATUS_CONTINUE = QUIC_STATUS - @as(c_int, 1);
+pub const QUIC_STATUS_OUT_OF_MEMORY = QUIC_STATUS ++ ENOMEM;
+pub const QUIC_STATUS_INVALID_PARAMETER = QUIC_STATUS ++ EINVAL;
+pub const QUIC_STATUS_INVALID_STATE = QUIC_STATUS ++ EPERM;
+pub const QUIC_STATUS_NOT_SUPPORTED = QUIC_STATUS ++ EOPNOTSUPP;
+pub const QUIC_STATUS_NOT_FOUND = QUIC_STATUS ++ ENOENT;
+pub const QUIC_STATUS_BUFFER_TOO_SMALL = QUIC_STATUS ++ EOVERFLOW;
+pub const QUIC_STATUS_HANDSHAKE_FAILURE = QUIC_STATUS ++ ECONNABORTED;
+pub const QUIC_STATUS_ABORTED = QUIC_STATUS ++ ECANCELED;
+pub const QUIC_STATUS_ADDRESS_IN_USE = QUIC_STATUS ++ EADDRINUSE;
+pub const QUIC_STATUS_INVALID_ADDRESS = QUIC_STATUS ++ EAFNOSUPPORT;
+pub const QUIC_STATUS_CONNECTION_TIMEOUT = QUIC_STATUS ++ ETIMEDOUT;
+pub const QUIC_STATUS_CONNECTION_IDLE = QUIC_STATUS ++ ETIME;
+pub const QUIC_STATUS_INTERNAL_ERROR = QUIC_STATUS ++ EIO;
+pub const QUIC_STATUS_CONNECTION_REFUSED = QUIC_STATUS ++ ECONNREFUSED;
+pub const QUIC_STATUS_PROTOCOL_ERROR = QUIC_STATUS ++ EPROTO;
+pub const QUIC_STATUS_VER_NEG_ERROR = QUIC_STATUS ++ EPROTONOSUPPORT;
+pub const QUIC_STATUS_UNREACHABLE = QUIC_STATUS ++ EHOSTUNREACH;
+pub const QUIC_STATUS_TLS_ERROR = QUIC_STATUS ++ ENOKEY;
+pub const QUIC_STATUS_USER_CANCELED = QUIC_STATUS ++ EOWNERDEAD;
+pub const QUIC_STATUS_ALPN_NEG_FAILURE = QUIC_STATUS ++ ENOPROTOOPT;
+pub const QUIC_STATUS_STREAM_LIMIT_REACHED = QUIC_STATUS ++ ESTRPIPE;
 pub inline fn QUIC_STATUS_TLS_ALERT(Alert: anytype) @TypeOf(QUIC_STATUS(@as(c_int, 0xff) & Alert) + TLS_ERROR_BASE) {
     return QUIC_STATUS(@as(c_int, 0xff) & Alert) + TLS_ERROR_BASE;
 }
@@ -6217,3 +6227,115 @@ pub const searchstate = struct_searchstate;
 pub const QUIC_HANDLE = struct_QUIC_HANDLE;
 
 pub const QuicStatus = @import("quic_status.zig");
+
+pub const LISTENER_NEW_CONNECTION_WRAPPER = extern struct {
+    Info: [*c]const QUIC_NEW_CONNECTION_INFO,
+    Connection: HQUIC,
+};
+pub const LISTENER_STOP_COMPLETE_WRAPPER = packed struct { AppCloseInProgress: bool, reserved: u7 };
+
+const SHUTDOWN_INITIATED_BY_PEER = extern struct {
+    ErrorCode: QUIC_UINT62,
+}; // /Users/marco/code/zig-libp2p/msquic/src/inc/msquic.h:1029:21: warning: struct demoted to opaque type - has bitfield
+const CONN_SHUTDOWN_COMPLETE = packed struct {
+    HandshakeCompleted: bool,
+    PeerAcknowledgedShutdown: bool,
+    AppCloseInProgress: bool,
+    // To be ABI sized
+    reserved: u5,
+};
+
+const STREAM_START_COMPLETE = extern struct {
+    Status: QUIC_STATUS,
+    ID: QUIC_UINT62,
+    // Bitfields are tricky since they are ABI defined (not defined by the C spec)
+    bitfields: packed struct {
+        PeerAccepted: bool,
+        RESERVED: u7,
+    },
+};
+
+const STREAM_SHUTDOWN_COMPLETE = extern struct {
+    ConnectionShutdown: u8,
+    bitfields: packed struct {
+        AppCloseInProgress: bool,
+        RESERVED: u7,
+    },
+};
+
+pub const QuicSettings = extern struct {
+    IsSet: extern union {
+        IsSetFlags: u64,
+        flags: packed struct {
+            MaxBytesPerKey: bool,
+            HandshakeIdleTimeoutMs: bool,
+            IdleTimeoutMs: bool,
+            MtuDiscoverySearchCompleteTimeoutUs: bool,
+            TlsClientMaxSendBuffer: bool,
+            TlsServerMaxSendBuffer: bool,
+            StreamRecvWindowDefault: bool,
+            StreamRecvBufferDefault: bool,
+            ConnFlowControlWindow: bool,
+            MaxWorkerQueueDelayUs: bool,
+            MaxStatelessOperations: bool,
+            InitialWindowPackets: bool,
+            SendIdleTimeoutMs: bool,
+            InitialRttMs: bool,
+            MaxAckDelayMs: bool,
+            DisconnectTimeoutMs: bool,
+            KeepAliveIntervalMs: bool,
+            CongestionControlAlgorithm: bool,
+            PeerBidiStreamCount: bool,
+            PeerUnidiStreamCount: bool,
+            MaxBindingStatelessOperations: bool,
+            StatelessOperationExpirationMs: bool,
+            MinimumMtu: bool,
+            MaximumMtu: bool,
+            SendBufferingEnabled: bool,
+            PacingEnabled: bool,
+            MigrationEnabled: bool,
+            DatagramReceiveEnabled: bool,
+            ServerResumptionLevel: bool,
+            MaxOperationsPerDrain: bool,
+            MtuDiscoveryMissingProbeCount: bool,
+            RESERVED: u33,
+        },
+    },
+
+    MaxBytesPerKey: u64,
+    HandshakeIdleTimeoutMs: u64,
+    IdleTimeoutMs: u64,
+    MtuDiscoverySearchCompleteTimeoutUs: u64,
+    TlsClientMaxSendBuffer: u32,
+    TlsServerMaxSendBuffer: u32,
+    StreamRecvWindowDefault: u32,
+    StreamRecvBufferDefault: u32,
+    ConnFlowControlWindow: u32,
+    MaxWorkerQueueDelayUs: u32,
+    MaxStatelessOperations: u32,
+    InitialWindowPackets: u32,
+    SendIdleTimeoutMs: u32,
+    InitialRttMs: u32,
+    MaxAckDelayMs: u32,
+    DisconnectTimeoutMs: u32,
+    KeepAliveIntervalMs: u32,
+    CongestionControlAlgorithm: u16, // QUIC_CONGESTION_CONTROL_ALGORITHM
+    PeerBidiStreamCount: u16,
+    PeerUnidiStreamCount: u16,
+    MaxBindingStatelessOperations: u16,
+    StatelessOperationExpirationMs: u16,
+    MinimumMtu: u16,
+    MaximumMtu: u16,
+    bitfields: packed struct {
+        SendBufferingEnabled: bool,
+        PacingEnabled: bool,
+        MigrationEnabled: bool,
+        DatagramReceiveEnabled: bool,
+        ServerResumptionLevel: u2, // QUIC_SERVER_RESUMPTION_LEVEL
+        RESERVED: u2,
+    },
+    MaxOperationsPerDrain: u8,
+    MtuDiscoveryMissingProbeCount: u8,
+};
+
+pub const QUIC_SETTINGS = QuicSettings; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:630:17: warning: struct demoted to opaque type - has bitfield

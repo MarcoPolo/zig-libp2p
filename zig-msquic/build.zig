@@ -79,7 +79,8 @@ pub fn build_msquic_wrapper(allocator: std.mem.Allocator, b: *std.build.Builder)
     const msquic_path = std.os.getenv("LIB_MSQUIC").?;
 
     const msquic_zig = b.addTranslateC(.{ .path = try std.fs.path.join(allocator, &.{ msquic_path, "/src/inc/msquic.h" }) });
-    std.debug.print("Path is {s}", .{try std.fs.path.join(allocator, &.{ msquic_path, "/src/inc/msquic.h" })});
+    // Print where our msquic.h header is
+    // std.debug.print("Path is {s}", .{try std.fs.path.join(allocator, &.{ msquic_path, "/src/inc/msquic.h" })});
 
     // This env is set from Nix dev shell
     msquic_zig.addIncludeDir(std.os.getenv("LIBSYSTEM_INCLUDE").?);

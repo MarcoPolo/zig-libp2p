@@ -18,7 +18,7 @@ test "start msquic" {
 
     const app_name: [:0]const u8 = "quicsample";
     const reg_config = MsQuic.QUIC_REGISTRATION_CONFIG{
-        .AppName = app_name,
+        .AppName = @ptrCast([*c]const u8, app_name),
         .ExecutionProfile = MsQuic.QUIC_EXECUTION_PROFILE_LOW_LATENCY,
     };
     var registration: MsQuic.HQUIC = undefined;

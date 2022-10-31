@@ -56,7 +56,7 @@ const ThroughputClient = struct {
 
         const app_name: [:0]const u8 = "secnetperf-client-tput-zig";
         const reg_config = MsQuic.QUIC_REGISTRATION_CONFIG{
-            .AppName = app_name,
+            .AppName = @ptrCast([*c]const u8, app_name),
             .ExecutionProfile = MsQuic.QUIC_EXECUTION_PROFILE_TYPE_MAX_THROUGHPUT,
         };
         var registration: MsQuic.HQUIC = undefined;
@@ -71,24 +71,24 @@ const ThroughputClient = struct {
         var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
         settings.IdleTimeoutMs = 5000;
-        settings.IsSet.IdleTimeoutMs = true;
+        settings.IsSet.flags.IdleTimeoutMs = true;
 
         settings.ConnFlowControlWindow = 0x8000000;
-        settings.IsSet.ConnFlowControlWindow = true;
+        settings.IsSet.flags.ConnFlowControlWindow = true;
 
         settings.CongestionControlAlgorithm = MsQuic.QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
-        settings.IsSet.CongestionControlAlgorithm = true;
+        settings.IsSet.flags.CongestionControlAlgorithm = true;
 
         // Configures the server's resumption level to allow for resumption and
         // 0-RTT.
-        settings.ServerResumptionLevel = MsQuic.QUIC_SERVER_RESUME_AND_ZERORTT;
-        settings.IsSet.ServerResumptionLevel = true;
+        settings.bitfields.ServerResumptionLevel = MsQuic.QUIC_SERVER_RESUME_AND_ZERORTT;
+        settings.IsSet.flags.ServerResumptionLevel = true;
 
         // Configures the server's settings to allow for the peer to open a single
         // bidirectional stream. By default connections are not configured to allow
         // any streams from the peer.
         settings.PeerBidiStreamCount = 1024;
-        settings.IsSet.PeerBidiStreamCount = true;
+        settings.IsSet.flags.PeerBidiStreamCount = true;
 
         var cred_config = std.mem.zeroes(MsQuic.QUIC_CREDENTIAL_CONFIG);
 
@@ -111,12 +111,12 @@ const ThroughputClient = struct {
             if (client_settings.download_length > 0) {
                 var buf = try allocator.alloc(u8, @sizeOf(u64));
                 var buf_ptr_hack = @ptrCast(*u64, @alignCast(8, &buf[0]));
-                buf_ptr_hack.* = @byteSwap(u64, client_settings.download_length);
+                buf_ptr_hack.* = @byteSwap(client_settings.download_length);
                 break :blk buf;
             } else {
                 var buf = try allocator.alloc(u8, client_settings.io_size);
                 var buf_ptr_hack = @ptrCast(*u64, @alignCast(8, &buf[0]));
-                buf_ptr_hack.* = @byteSwap(u64, 0);
+                buf_ptr_hack.* = @byteSwap(@as(u64, 0));
                 var i: usize = @sizeOf(u64);
                 while (i < client_settings.io_size) : (i += 1) {
                     buf[i] = @truncate(u8, i);
@@ -207,7 +207,7 @@ const ThroughputClient = struct {
             conn,
             self.configuration,
             MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC,
-            self.settings.target,
+            @ptrCast([*c]const u8, self.settings.target),
             self.settings.target_port,
         );
         if (MsQuic.QuicStatus.isError(status)) {
