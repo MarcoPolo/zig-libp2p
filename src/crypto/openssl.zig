@@ -1148,20 +1148,18 @@ test "Round trip peer id" {
 }
 
 test "base32 encoding" {
+    std.testing.log_level = .debug;
     const s = "080112208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f01";
-    // const base32 = @import("base32");
-    // const encoding = base32.std_encoding;
     const encoding = no_padding_encoding;
     var buf = [_]u8{0} ** (s.len / 2);
     const encoded_len = comptime encoding.encodeLen(buf.len);
     const decoded_len = comptime encoding.decodeLen(encoded_len);
     var roundtrip_buf = [_]u8{0} ** decoded_len;
-    _ = try std.fmt.hexToBytes(&buf, "080112208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f01");
+    _ = try std.fmt.hexToBytes(&buf, s);
     var buf_encoded = [_]u8{0} ** encoded_len;
     _ = encoding.encode(&buf_encoded, buf[0..]);
-    std.debug.print("decoded len is {}\n\n", .{decoded_len});
-    std.debug.print("Encoded is {s}\n\n", .{buf_encoded});
 
     _ = try encoding.decode(roundtrip_buf[0..], buf_encoded[0..]);
+
     try std.testing.expectEqualSlices(u8, buf[0..], roundtrip_buf[0..buf.len]);
 }
