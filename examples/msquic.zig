@@ -8,18 +8,6 @@ const MsQuic = @import("msquic_wrapper.zig");
 
 const udp_port: u16 = 4567;
 
-fn open_socket() !i32 {
-    const os = std.os;
-    var sockfd: i32 = try std.os.socket(
-        os.AF.INET,
-        os.SOCK.DGRAM | os.SOCK.CLOEXEC | os.SOCK.NONBLOCK,
-        0,
-    );
-    // var addr: std.net.Address = try std.net.Address.parseIp4("127.0.0.1", 8125);
-    // try os.bind(sockfd, &addr.any, @sizeOf(os.sockaddr.in));
-    return sockfd;
-}
-
 fn hasFlag(f: []const u8) bool {
     for (std.os.argv) |flag| {
         const s = std.mem.sliceTo(flag, 0);
