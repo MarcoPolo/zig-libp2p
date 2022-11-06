@@ -100,12 +100,18 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    const tests = b.addTest("src/msquic.zig");
+    const tests = b.addTestExe("tests", "src/msquic.zig");
     tests.setBuildMode(mode);
     tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
+    tests.output_dir = "zig-out/bin";
     try linkMsquic(allocator, target, tests);
-    const tests_step = b.step("tests", "Run msquic tests");
+    std.debug.print("Exe is in: {s} in {any}\n", .{ tests.out_filename, tests.output_dir });
+    const tests_step = b.step("tests", "Build zig-msquic tests");
     tests_step.dependOn(&tests.step);
+
+    const run_tests = tests.run();
+    const run_tests_step = b.step("run-tests", "Run zig-msquic tests");
+    run_tests_step.dependOn(&run_tests.step);
 
     try build_msquic_wrapper(allocator, b);
 }

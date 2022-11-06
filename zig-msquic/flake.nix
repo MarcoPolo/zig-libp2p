@@ -34,15 +34,33 @@
           LIB_OPENSSL = "${openssl.dev}";
         };
 
-        packages.glibc-fhs = (pkgs.buildFHSUserEnv {
-          name = "glibc-env";
-          targetPkgs = pkgs: (with pkgs;
-            [ glibc ]);
-          multiPkgs = pkgs: (with pkgs;
-            [ glibc ]);
-          runScript = "/usr/bin/bash";
-        });
+        packages.tests = pkgs.stdenv.mkDerivation
+          {
+            name = "tests";
+            src = ./.;
+            nativeBuildInputs = [
+              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+            ];
+            buildInputs = [
+              zig
+              openssl
+            ]
+            ++ (if pkgs.stdenv.isDarwin
+            then
+              (with pkgs.darwin.apple_sdk.frameworks;
+              [ Security Foundation ])
+            else [ ]);
 
-        devShells.CI = self.devShell.${system} // self.packages.${system}.glibc-fhs.env;
+            LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
+            LIB_OPENSSL = "${openssl.dev}";
+
+            buildPhase = ''
+              export HOME=$PWD
+              ${zig}/bin/zig build tests
+            '';
+            installPhase = ''
+              cp -r zig-out $out
+            '';
+          };
       });
 }
