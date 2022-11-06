@@ -34,5 +34,15 @@
           LIB_OPENSSL = "${openssl.dev}";
         };
 
+        packages.glibc-fhs = (pkgs.buildFHSUserEnv {
+          name = "glibc-env";
+          targetPkgs = pkgs: (with pkgs;
+            [ glibc ]);
+          multiPkgs = pkgs: (with pkgs;
+            [ glibc ]);
+          runScript = "/usr/bin/bash";
+        });
+
+        devShells.CI = self.devShell.${system} // self.packages.${system}.glibc-fhs.env;
       });
 }
