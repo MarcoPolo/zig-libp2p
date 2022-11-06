@@ -29,7 +29,7 @@ const ThroughputClient = struct {
         use_send_buffering: bool = true,
         // download_length: u64 = 0x2fffffff,
         download_length: u64 = 0,
-        upload_length: u64 = 0x5fffffff,
+        upload_length: u64 = 0xfffffff,
         // upload_length: u64 = 0,
         io_size: u32 = 0x10000,
 
@@ -323,6 +323,7 @@ const ThroughputClient = struct {
 
         if (!stream_context.complete and stream_context.bytes_completed == 0) {
             std.debug.print("Error: Did not complete any bytes! Failed to connect?\n", .{});
+            std.debug.print("Run the server with something like: $LIB_MSQUIC/artifacts/bin/<OS>/<ARCH>_Release_openssl/secnetperf \n", .{});
         } else {
             std.debug.print("Result: {} bytes @ {} kbps ({} ms). \n", .{ stream_context.bytes_completed, send_rate, elapsed_ms });
             std.debug.print("Result: {} bytes @ {} kbps ({} ms). \n", .{ stream_context.bytes_sent, send_rate, elapsed_ms });
@@ -362,8 +363,6 @@ test "throughputclient" {
     const allocator = std.testing.allocator;
 
     std.debug.print("\n", .{});
-    std.debug.print("Run the server with something like: $LIB_MSQUIC/artifacts/bin/macos/arm64_Release_openssl/secnetperf \n", .{});
-    std.debug.print("You'll need to change the architecture to match your systems arch. \n", .{});
     var c = try ThroughputClient.init(allocator, .{ .use_send_buffering = false });
     defer c.deinit();
 

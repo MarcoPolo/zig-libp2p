@@ -69,9 +69,11 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
         next_is_framework = std.mem.eql(u8, val, "-iframework");
     }
 
-    l.linkFramework("Security");
-    l.linkFramework("Foundation");
-    l.linkFramework("CoreFoundation");
+    if (os_tag == .macos) {
+        l.linkFramework("Security");
+        l.linkFramework("Foundation");
+        l.linkFramework("CoreFoundation");
+    }
 }
 
 pub fn build_msquic_wrapper(allocator: std.mem.Allocator, b: *std.build.Builder) anyerror!void {
@@ -82,8 +84,6 @@ pub fn build_msquic_wrapper(allocator: std.mem.Allocator, b: *std.build.Builder)
     // Print where our msquic.h header is
     // std.debug.print("Path is {s}", .{try std.fs.path.join(allocator, &.{ msquic_path, "/src/inc/msquic.h" })});
 
-    // This env is set from Nix dev shell
-    msquic_zig.addIncludeDir(std.os.getenv("LIBSYSTEM_INCLUDE").?);
     msquic_zig.addIncludeDir(try std.fs.path.join(allocator, &.{ msquic_path, "/src/inc/" }));
 
     const msquic_zig_step = b.step("msquicWrapper", "Build Zig wrapper around msquic API");
