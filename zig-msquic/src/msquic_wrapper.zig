@@ -1872,16 +1872,6 @@ const union_unnamed_4 = extern union {
     CertificateFileProtected: [*c]QUIC_CERTIFICATE_FILE_PROTECTED,
     CertificatePkcs12: [*c]QUIC_CERTIFICATE_PKCS12,
 };
-pub const struct_QUIC_CREDENTIAL_CONFIG = extern struct {
-    Type: QUIC_CREDENTIAL_TYPE,
-    Flags: QUIC_CREDENTIAL_FLAGS,
-    unnamed_0: union_unnamed_4,
-    Principal: [*c]const u8,
-    Reserved: ?*anyopaque,
-    AsyncHandler: QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER,
-    AllowedCipherSuites: QUIC_ALLOWED_CIPHER_SUITE_FLAGS,
-};
-pub const QUIC_CREDENTIAL_CONFIG = struct_QUIC_CREDENTIAL_CONFIG;
 pub const struct_QUIC_TICKET_KEY_CONFIG = extern struct {
     Id: [16]u8,
     Material: [64]u8,
@@ -6339,3 +6329,13 @@ pub const QuicSettings = extern struct {
 };
 
 pub const QUIC_SETTINGS = QuicSettings; // /nix/store/0if5sla12cr69c4b806czi5h12sa400l-libmsquic-4326e6bac26d880fa833a7edcf39fcc27f1996f9/src/inc/msquic.h:630:17: warning: struct demoted to opaque type - has bitfield
+
+pub const QUIC_CREDENTIAL_CONFIG = extern struct {
+    Type: QUIC_CREDENTIAL_TYPE,
+    Flags: QUIC_CREDENTIAL_FLAGS,
+    QuicCert: union_unnamed_4,
+    Principal: [*c]const u8,
+    Reserved: ?*anyopaque,
+    AsyncHandler: QUIC_CREDENTIAL_LOAD_COMPLETE_HANDLER,
+    AllowedCipherSuites: QUIC_ALLOWED_CIPHER_SUITE_FLAGS,
+};

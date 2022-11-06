@@ -12,9 +12,9 @@ pub fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) an
     l.linkSystemLibraryName("crypto");
 }
 
-pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
-    // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
-    const msquic_dir = os.getenv("LIB_MSQUIC").?;
+pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep, releaseMode: bool) anyerror!void {
+    // Built with Nix. See flake.nix (which sets this), and `msquic.nix` for build details.
+    const msquic_dir = if (releaseMode) os.getenv("LIB_MSQUIC").? else os.getenv("LIB_MSQUIC_DEBUG").?;
 
     l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,
@@ -44,9 +44,10 @@ pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: 
     };
 
     // Debug to catch issues
-    // const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
-    // std.debug.print("{any}_\n", .{arch_str});
-    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
+    const libmsquic_arch_path = if (releaseMode)
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" })
+    else
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
 
     l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,
@@ -103,7 +104,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const tests = b.addTestExe("tests", "src/msquic.zig");
     tests.setBuildMode(mode);
     tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
-    try linkMsquic(allocator, target, tests);
+    try linkMsquic(allocator, target, tests, true);
     std.debug.print("Exe is in: {s} in {any}\n", .{ tests.out_filename, tests.output_dir });
     const tests_step = b.step("tests", "Build zig-msquic tests");
     tests_step.dependOn(&b.addInstallArtifact(tests).step);

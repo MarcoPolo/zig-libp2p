@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub, clangStdenv, cmake, powershell, darwin, perl, xcbuild, quictls, pkgs }:
+{ debug }: { stdenv, fetchFromGitHub, clangStdenv, cmake, powershell, darwin, perl, xcbuild, quictls, pkgs }:
 
 pkgs.clangStdenv.mkDerivation rec {
   pname = "libmsquic";
@@ -34,8 +34,11 @@ pkgs.clangStdenv.mkDerivation rec {
     cat submodules/openssl/config
 
     # Change to build release or static
+    ${if debug then ''
+    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
+    '' else ''
     HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
-    # HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
+    ''}
   '';
 
   installPhase = ''

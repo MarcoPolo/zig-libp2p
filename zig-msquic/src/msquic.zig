@@ -1,5 +1,5 @@
 const std = @import("std");
-usingnamespace @import("msquic_wrapper.zig");
+pub usingnamespace @import("msquic_wrapper.zig");
 
 test {
     _ = @import("./perf/throughput_client.zig");

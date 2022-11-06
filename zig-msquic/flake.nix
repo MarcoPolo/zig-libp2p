@@ -12,7 +12,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { system = system; };
@@ -21,7 +21,9 @@
         zig = zig-overlay.packages.${system}."0.10.0";
       in
       {
-        packages.libmsquic = pkgs.callPackage (import ./msquic.nix) { quictls = openssl; };
+        packages.libmsquic = pkgs.callPackage (import ./msquic.nix { debug = false; }) { quictls = openssl; };
+        packages.libmsquic-debug = pkgs.callPackage (import ./msquic.nix { debug = true; }) { quictls = openssl; };
+        packages.openssl = openssl;
         devShell = pkgs.mkShell rec {
           buildInputs = [ zig openssl ]
             ++ (if pkgs.stdenv.isDarwin
@@ -32,6 +34,7 @@
 
           LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
           LIB_OPENSSL = "${openssl.dev}";
+          LIB_OPENSSL_DEBUG = "${openssl.dev}";
         };
 
         packages.tests = pkgs.stdenv.mkDerivation
