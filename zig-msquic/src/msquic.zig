@@ -1,11 +1,12 @@
 const std = @import("std");
-const MsQuic = @import("msquic_wrapper.zig");
+usingnamespace @import("msquic_wrapper.zig");
 
 test {
     _ = @import("./perf/throughput_client.zig");
 }
 
 test "start msquic" {
+    const MsQuic = @import("msquic_wrapper.zig");
     var status: u32 = 0;
     var msquic: *MsQuic.QUIC_API_TABLE = undefined;
     const msQuicPtr = @ptrCast([*c]?*const anyopaque, &msquic);

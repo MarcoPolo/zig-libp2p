@@ -362,6 +362,8 @@ test "throughputclient" {
     const allocator = std.testing.allocator;
 
     std.debug.print("\n", .{});
+    std.debug.print("Run the server with something like: $LIB_MSQUIC/artifacts/bin/macos/arm64_Release_openssl/secnetperf \n", .{});
+    std.debug.print("You'll need to change the architecture to match your systems arch. \n", .{});
     var c = try ThroughputClient.init(allocator, .{ .use_send_buffering = false });
     defer c.deinit();
 
