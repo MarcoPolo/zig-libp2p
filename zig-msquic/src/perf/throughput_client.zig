@@ -111,12 +111,12 @@ const ThroughputClient = struct {
             if (client_settings.download_length > 0) {
                 var buf = try allocator.alloc(u8, @sizeOf(u64));
                 var buf_ptr_hack = @ptrCast(*u64, @alignCast(8, &buf[0]));
-                buf_ptr_hack.* = @byteSwap(client_settings.download_length);
+                buf_ptr_hack.* = std.mem.nativeToBig(u64, client_settings.download_length);
                 break :blk buf;
             } else {
                 var buf = try allocator.alloc(u8, client_settings.io_size);
                 var buf_ptr_hack = @ptrCast(*u64, @alignCast(8, &buf[0]));
-                buf_ptr_hack.* = @byteSwap(@as(u64, 0));
+                buf_ptr_hack.* = std.mem.nativeToBig(u64, 0);
                 var i: usize = @sizeOf(u64);
                 while (i < client_settings.io_size) : (i += 1) {
                     buf[i] = @truncate(u8, i);
