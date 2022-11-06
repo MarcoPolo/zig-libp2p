@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const os = std.os;
 
-fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerror!void {
+pub fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerror!void {
     const openssl_path = try std.fs.path.join(allocator, &.{ os.getenv("LIB_OPENSSL").?, "/lib" });
     const openssl_inc_path = try std.fs.path.join(allocator, &.{ os.getenv("LIB_OPENSSL").?, "/include" });
     l.addLibraryPath(openssl_path);
@@ -12,7 +12,7 @@ fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerr
     l.linkSystemLibraryName("crypto");
 }
 
-fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
+pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
     // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
     const msquic_dir = os.getenv("LIB_MSQUIC").?;
 
@@ -103,11 +103,10 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const tests = b.addTestExe("tests", "src/msquic.zig");
     tests.setBuildMode(mode);
     tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
-    tests.output_dir = "zig-out/bin";
     try linkMsquic(allocator, target, tests);
     std.debug.print("Exe is in: {s} in {any}\n", .{ tests.out_filename, tests.output_dir });
     const tests_step = b.step("tests", "Build zig-msquic tests");
-    tests_step.dependOn(&tests.step);
+    tests_step.dependOn(&b.addInstallArtifact(tests).step);
 
     const run_tests = tests.run();
     const run_tests_step = b.step("run-tests", "Run zig-msquic tests");
