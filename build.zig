@@ -191,6 +191,7 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     try addZigDeps(allocator, tests);
     tests.filter = test_filter;
     try linkOpenssl(allocator, tests);
+    try includeLibSystemFromNix(allocator, tests);
     const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
     tests_step.dependOn(&tests.step);
 }
