@@ -1,5 +1,5 @@
 const std = @import("std");
-usingnamespace @import("./crypto/openssl.zig");
+pub usingnamespace @import("./crypto/openssl.zig");
 const base32 = @import("./multibase/base32.zig");
 
 const b32_alphabet = "abcdefghijklmnopqrstuvwxyz234567";

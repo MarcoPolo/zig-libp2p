@@ -5,6 +5,9 @@ const assert = std.debug.assert;
 const no_padding_encoding = @import("../crypto.zig").no_padding_encoding;
 
 const c = @cImport({
+    // See https://github.com/ziglang/zig/issues/515
+    // @cDefine("_NO_CRT_STDIO_INLINE", "1");
+    @cInclude("openssl/asn1.h");
     @cInclude("openssl/evp.h");
     @cInclude("openssl/ec.h");
     @cInclude("openssl/pem.h");

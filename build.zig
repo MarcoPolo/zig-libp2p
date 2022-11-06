@@ -196,6 +196,45 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     tests_step.dependOn(&tests.step);
 }
 
+pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget) anyerror!void {
+    const msquic_builder = @import("./zig-msquic/build.zig");
+    const ping_example = b.addExecutable("ping", "examples/ping/main.zig");
+    ping_example.addPackage(std.build.Pkg{
+        .name = "msquic",
+        .source = .{
+            .path = "zig-msquic/src/msquic_wrapper.zig",
+        },
+    });
+
+    ping_example.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
+        .path = "src/msquic.zig",
+    }, .dependencies = &[_]std.build.Pkg{.{
+        .name = "msquic",
+        .source = .{
+            .path = "zig-msquic/src/msquic_wrapper.zig",
+        },
+    }} });
+    ping_example.addPackage(std.build.Pkg{
+        .name = "libp2p",
+        .source = .{
+            .path = "src/libp2p-ng.zig",
+        },
+    });
+
+    ping_example.addIncludePath("src/workaround");
+
+    ping_example.setBuildMode(mode);
+
+    try msquic_builder.linkMsquic(allocator, target, ping_example, true);
+    try includeLibSystemFromNix(allocator, ping_example);
+
+    const ping_example_step = b.step("ping-example", "Build ping example");
+    ping_example_step.dependOn(&b.addInstallArtifact(ping_example).step);
+
+    const run_ping_example_step = b.step("run-ping-example", "Run ping example");
+    run_ping_example_step.dependOn(&ping_example.run().step);
+}
+
 pub fn build(b: *std.build.Builder) anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -270,6 +309,8 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     // libp2p_tests.single_threaded = true;
     const libp2p_tests_step = b.step("libp2p_tests", "Run libp2p tests");
     libp2p_tests_step.dependOn(&libp2p_tests.step);
+
+    try buildPingExample(b, allocator, mode, target);
 
     // start libp2p examples
 
