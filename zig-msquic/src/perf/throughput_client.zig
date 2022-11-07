@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const MsQuic = @import("../msquic_wrapper.zig");
 const QuicStatus = MsQuic.QuicStatus;
-// const TailQueue = std.TailQueue;
 const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;

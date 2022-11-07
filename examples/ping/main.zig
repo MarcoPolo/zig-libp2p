@@ -3,10 +3,7 @@ const MsQuic = @import("msquic");
 const crypto = @import("libp2p").crypto;
 const CredentialConfigHelper = @import("libp2p-msquic").crypto.CredentialConfigHelper;
 // const MsQuic = @import("msquic/msquic-wrapper.zig");
-
-const workaround = @cImport({
-    @cInclude("link_workaround.h");
-});
+const log = std.log;
 
 const Allocator = std.mem.Allocator;
 const QuicStatus = MsQuic.QuicStatus;
@@ -23,7 +20,10 @@ const Ping = struct {
     configuration: MsQuic.HQUIC,
     settings: Settings,
 
-    const Settings = struct {};
+    const Settings = struct {
+        target: []const u8,
+        target_port: u16,
+    };
 
     var libp2p_proto_name = "libp2p".*;
     const alpn = MsQuic.QUIC_BUFFER{
@@ -32,10 +32,6 @@ const Ping = struct {
     };
 
     pub fn init(allocator: Allocator, ping_settings: Settings) !@This() {
-        // Workaround a bug in the zig compiler. It loses this symbol.
-        var max_mem = workaround.CGroupGetMemoryLimit();
-        _ = max_mem;
-
         const host_key = try crypto.OpenSSLKey.ED25519KeyPair.new();
         var msquic: *MsQuic.QUIC_API_TABLE = undefined;
         const msquic_ptr = @ptrCast([*c]?*const anyopaque, &msquic);
@@ -47,7 +43,7 @@ const Ping = struct {
         const app_name: [:0]const u8 = "ping-protocol-example";
         const reg_config = MsQuic.QUIC_REGISTRATION_CONFIG{
             .AppName = @ptrCast([*c]const u8, app_name),
-            .ExecutionProfile = MsQuic.QUIC_EXECUTION_PROFILE_TYPE_MAX_THROUGHPUT,
+            .ExecutionProfile = MsQuic.QUIC_EXECUTION_PROFILE_LOW_LATENCY,
         };
         var registration: MsQuic.HQUIC = undefined;
 
@@ -63,6 +59,11 @@ const Ping = struct {
         settings.IdleTimeoutMs = 5000;
         settings.IsSet.flags.IdleTimeoutMs = true;
 
+        // Configures the server's resumption level to allow for resumption and
+        // 0-RTT.
+        settings.bitfields.ServerResumptionLevel = MsQuic.QUIC_SERVER_RESUME_AND_ZERORTT;
+        settings.IsSet.flags.ServerResumptionLevel = true;
+
         // Configures the server's settings to allow for the peer to open a single
         // bidirectional stream. By default connections are not configured to allow
         // any streams from the peer.
@@ -71,7 +72,10 @@ const Ping = struct {
 
         var cred_config = std.mem.zeroes(MsQuic.QUIC_CREDENTIAL_CONFIG);
 
-        var cred_config_helper = CredentialConfigHelper.init(&cred_config);
+        // todo clear
+        var cred_config_helper = try allocator.create(CredentialConfigHelper);
+        cred_config_helper.* = CredentialConfigHelper.init(&cred_config);
+
         // try cred_config_helper.setupCert(host_key);
 
         var cert_key = try crypto.OpenSSLKey.ED25519KeyPair.new();
@@ -96,6 +100,8 @@ const Ping = struct {
         cred_config_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
         cred_config_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
         cred_config_helper.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
+        // We do the cert validation ourselves with https://github.com/libp2p/specs/blob/master/tls/tls.md
+        cred_config_helper.cred_config.Flags = MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
 
         if (MsQuic.QuicStatus.isError(msquic.ConfigurationOpen.?(registration, &alpn, 1, &settings, @sizeOf(@TypeOf(settings)), null, &configuration))) {
             return error.ConfigurationFailed;
@@ -124,89 +130,73 @@ const Ping = struct {
     }
 
     pub fn ping(self: *@This()) !void {
-        _ = self;
-        // self.start_time = try Instant.now();
-        // var conn: MsQuic.HQUIC = undefined;
-        // if (QuicStatus.isError(self.msquic.ConnectionOpen.?(self.registration, ThroughputClient.connectionCallback, self, &conn))) {
-        //     return error.FailedToOpenConn;
-        // }
+        var conn: MsQuic.HQUIC = undefined;
+        if (QuicStatus.isError(self.msquic.ConnectionOpen.?(self.registration, Ping.connectionCallback, self, &conn))) {
+            return error.FailedToOpenConn;
+        }
 
-        // errdefer {
-        //     self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-        // }
+        errdefer {
+            self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+        }
 
-        // if (!self.settings.use_send_buffering) {
-        //     var settings = std.mem.zeroes(MsQuic.QuicSettings);
-        //     settings.bitfields.SendBufferingEnabled = false;
-        //     settings.IsSet.flags.SendBufferingEnabled = true;
-        //     const status = self.msquic.SetParam.?(conn, MsQuic.QUIC_PARAM_CONN_SETTINGS, @sizeOf(@TypeOf(settings)), &settings);
-        //     if (QuicStatus.isError(status)) {
-        //         std.debug.print("MsQuic->SetParam (CONN_SETTINGS) failed! {}\n", .{status});
-        //         return error.FailedToSetParam;
-        //     }
-        // }
+        var stream_context = try self.allocator.create(StreamContext);
+        stream_context.* = StreamContext{
+            .start_time = null,
+            .msquic = self.msquic,
+            .handle = undefined,
+        };
+        errdefer {
+            self.allocator.destroy(stream_context);
+        }
 
-        // var stream_context = try self.allocator.create(StreamContext);
-        // stream_context.* = StreamContext{
-        //     .client = self,
-        //     .handle = undefined,
-        // };
-        // errdefer {
-        //     self.allocator.destroy(stream_context);
-        // }
+        var status = self.msquic.StreamOpen.?(
+            conn,
+            MsQuic.QUIC_STREAM_OPEN_FLAG_NONE,
+            StreamContext.streamCallback,
+            stream_context,
+            &stream_context.handle,
+        );
 
-        // var status = self.msquic.StreamOpen.?(
-        //     conn,
-        //     MsQuic.QUIC_STREAM_OPEN_FLAG_NONE,
-        //     StreamContext.streamCallback,
-        //     stream_context,
-        //     &stream_context.handle,
-        // );
-
-        // if (MsQuic.QuicStatus.isError(status)) {
-        //     return error.StreamOpenFailed;
-        // }
+        if (MsQuic.QuicStatus.isError(status)) {
+            return error.StreamOpenFailed;
+        }
 
         // status = self.msquic.StreamStart.?(stream_context.handle, MsQuic.QUIC_STREAM_START_FLAG_NONE);
         // if (MsQuic.QuicStatus.isError(status)) {
         //     return error.StreamStartFailed;
         // }
 
-        // if (self.settings.download_length > 0) {
-        //     // Download only, close send side
-        //     _ = self.msquic.StreamSend.?(
-        //         stream_context.handle,
-        //         &self.data_buffer,
-        //         1,
-        //         MsQuic.QUIC_SEND_FLAG_FIN,
-        //         &self.data_buffer,
-        //     );
-        // } else {
-        //     std.debug.assert(self.settings.upload_length > 0);
-        //     self.sendQuicData(stream_context);
-        // }
+        // stream_context.startPinging();
 
-        // status = self.msquic.ConnectionStart.?(
-        //     conn,
-        //     self.configuration,
-        //     MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC,
-        //     @ptrCast([*c]const u8, self.settings.target),
-        //     self.settings.target_port,
-        // );
-        // if (MsQuic.QuicStatus.isError(status)) {
-        //     return error.ConnectionStartFailed;
-        // }
+        status = self.msquic.ConnectionStart.?(
+            conn,
+            self.configuration,
+            MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC,
+            @ptrCast([*c]const u8, self.settings.target),
+            self.settings.target_port,
+        );
+
+        if (MsQuic.QuicStatus.isError(status)) {
+            return error.ConnectionStartFailed;
+        }
+        std.time.sleep(2 * std.time.ns_per_s);
+        log.info("!! Returning from ping", .{});
     }
 
     const StreamContext = struct {
-        client: *Ping,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        handle: MsQuic.HQUIC,
 
-        start_time: std.time.Instant,
+        start_time: ?std.time.Instant,
+
+        fn startPinging(self: @This()) void {
+            _ = self;
+        }
 
         fn streamCallback(stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
+            log.info("stream event: from={any} {}\n", .{ stream, event.*.Type });
             const self = @ptrCast(*StreamContext, @alignCast(@alignOf(StreamContext), self_ptr));
             _ = self;
-            _ = stream;
             switch (event.*.Type) {
                 // MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
                 //     stream_context.bytes_completed += event.*.unnamed_0.RECEIVE.TotalBufferLength;
@@ -257,17 +247,23 @@ const Ping = struct {
     };
 
     fn connectionCallback(connection: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_CONNECTION_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
-        const self = @ptrCast(*Ping, @alignCast(@alignOf(Ping), self_ptr));
-        // std.debug.print("Connection event: from={any} {}\n", .{ connection, event.*.Type });
+        // const self = @ptrCast(*Ping, @alignCast(@alignOf(Ping), self_ptr));
+        log.info("Connection event: from={any} {}\n", .{ connection, event.*.Type });
+        defer log.info("Returning from Connection event: from={any} {}\n", .{ connection, event.*.Type });
+        _ = self_ptr;
 
-        switch (event.*.Type) {
-            MsQuic.QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE => {
-                if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
-                    self.msquic.ConnectionClose.?(connection);
-                }
-            },
-            else => {},
-        }
+        // switch (event.*.Type) {
+        //     MsQuic.QUIC_CONNECTION_EVENT_CONNECTED => {
+        //         log.info("Connected", .{});
+        //     },
+        //     MsQuic.QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE => {
+        //         if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
+        //             _ = self;
+        //             // self.msquic.ConnectionClose.?(connection);
+        //         }
+        //     },
+        //     else => {},
+        // }
 
         return 0;
     }
@@ -278,9 +274,14 @@ pub fn main() anyerror!void {
     std.debug.print("\n", .{});
     std.debug.print("Crypto is: {any}\n", .{@typeInfo(@TypeOf(crypto))});
     std.debug.print("Starting ping\n", .{});
-    var client = try Ping.init(allocator, .{});
+    var client = try Ping.init(allocator, .{
+        .target = "127.0.0.1",
+        .target_port = 9195,
+    });
     defer client.deinit();
 
     try client.ping();
+    std.debug.print("waiting ping\n", .{});
     std.time.sleep(10 * std.time.ns_per_s);
+    std.debug.print("done waiting\n", .{});
 }

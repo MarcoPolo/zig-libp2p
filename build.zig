@@ -221,8 +221,6 @@ pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.b
         },
     });
 
-    ping_example.addIncludePath("src/workaround");
-
     ping_example.setBuildMode(mode);
 
     try msquic_builder.linkMsquic(allocator, target, ping_example, true);
