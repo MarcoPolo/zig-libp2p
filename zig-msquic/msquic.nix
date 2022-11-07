@@ -2,13 +2,14 @@
 
 pkgs.clangStdenv.mkDerivation rec {
   pname = "libmsquic";
-  version = "4326e6bac26d880fa833a7edcf39fcc27f1996f9";
+  version = "v2.1.5";
   src = fetchFromGitHub {
     fetchSubmodules = true;
     owner = "microsoft";
     repo = "msquic";
     rev = version;
-    sha256 = "sha256-6Ga3Iqlhh60unRfzWVmu0iFDUdF4F1aBelHvhZObPP4=";
+    sha256 = "sha256-3a0NPdB64NmZBwhUk7mrV/kT1YA4jDqZCgSApQCvCDY=";
+    # sha256 = pkgs.lib.fakeSha256;
   };
   buildInputs = [
     pkgs.clangStdenv
