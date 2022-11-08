@@ -196,9 +196,10 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     tests_step.dependOn(&tests.step);
 }
 
-pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget) anyerror!void {
+pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
     const msquic_builder = @import("./zig-msquic/build.zig");
     const ping_example = b.addExecutable("ping", "examples/ping/main.zig");
+
     ping_example.addPackage(std.build.Pkg{
         .name = "msquic",
         .source = .{
@@ -231,6 +232,38 @@ pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.b
 
     const run_ping_example_step = b.step("run-ping-example", "Run ping example");
     run_ping_example_step.dependOn(&ping_example.run().step);
+
+    const ping_example_test = b.addTest("examples/ping/main.zig");
+    ping_example_test.filter = test_filter;
+    try msquic_builder.linkMsquic(allocator, target, ping_example_test, true);
+    try includeLibSystemFromNix(allocator, ping_example_test);
+
+    ping_example_test.addPackage(std.build.Pkg{
+        .name = "msquic",
+        .source = .{
+            .path = "zig-msquic/src/msquic_wrapper.zig",
+        },
+    });
+
+    ping_example_test.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
+        .path = "src/msquic.zig",
+    }, .dependencies = &[_]std.build.Pkg{.{
+        .name = "msquic",
+        .source = .{
+            .path = "zig-msquic/src/msquic_wrapper.zig",
+        },
+    }} });
+    ping_example_test.addPackage(std.build.Pkg{
+        .name = "libp2p",
+        .source = .{
+            .path = "src/libp2p-ng.zig",
+        },
+    });
+
+    ping_example_test.setBuildMode(mode);
+
+    const test_ping_example_step = b.step("run-ping-example-test", "Run ping example test");
+    test_ping_example_step.dependOn(&ping_example_test.step);
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
@@ -308,7 +341,7 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     const libp2p_tests_step = b.step("libp2p_tests", "Run libp2p tests");
     libp2p_tests_step.dependOn(&libp2p_tests.step);
 
-    try buildPingExample(b, allocator, mode, target);
+    try buildPingExample(b, allocator, mode, target, test_filter);
 
     // start libp2p examples
 

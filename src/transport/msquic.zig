@@ -679,7 +679,7 @@ pub const MsQuicTransport = struct {
             transport: *MsQuicTransport,
             accept_lock: ?std.event.Lock,
 
-            fn cCallback(msquic_stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) c_uint {
+            fn cCallback(msquic_stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
                 const self = @ptrCast(*StreamContext, @alignCast(@alignOf(StreamContext), self_ptr));
                 defer {
                     switch (event.*.Type) {
