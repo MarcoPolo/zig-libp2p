@@ -4,9 +4,7 @@ const Allocator = std.mem.Allocator;
 const log = std.log;
 const assert = std.debug.assert;
 
-const multistream_protocol_id = "/multistream/1.0.0";
 const multistream_protocol_id_with_newline = "/multistream/1.0.0\n";
-
 const na_with_newline = "na\n";
 
 pub const BufferedManyBufsReader = struct {
@@ -179,8 +177,6 @@ pub const StreamStateMachine = struct {
             sent_ms_id: bool = false,
             got_back_ms_id: bool = false,
             waiting_for_protocol_resp: bool = false,
-            // Index into our supported protocols
-            negotiating_protocol: u16 = 0,
         },
         using_protocol: []const u8,
     };
@@ -216,20 +212,6 @@ pub const StreamStateMachine = struct {
 
     pub fn deinit(self: *@This()) void {
         self.buf.deinit();
-    }
-
-    fn eqlAcrossBufs(bufs: [][]const u8, other_buf: []const u8) bool {
-        var idx_in_other_buf = 0;
-        for (bufs) |buf| {
-            if (buf.len < (other_buf.len - idx_in_other_buf)) {
-                if (!std.mem.eql(u8, buf, other_buf[idx_in_other_buf .. buf.len + idx_in_other_buf])) {
-                    return false;
-                }
-                idx_in_other_buf = buf.len;
-            } else {
-                return std.mem.eql(u8, bufs, other_buf);
-            }
-        }
     }
 
     pub fn negotiateMultistream(self: *StreamStateMachine, in_bufs: [][]const u8, send_b: []u8, events_buf: Events) StreamError!Events {
