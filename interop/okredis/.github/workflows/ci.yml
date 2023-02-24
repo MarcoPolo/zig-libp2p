@@ -1,0 +1,23 @@
+name: CI
+on: 
+  push:
+    paths:
+      - 'src/**'
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Get latest Zig
+      run: sudo snap install zig --classic --edge
+
+    - name: Check out code 
+      uses: actions/checkout@v1
+      
+    - name: LMAO
+      run: sudo chown root:root /
+      
+    - name: Run tests
+      run: zig build test
