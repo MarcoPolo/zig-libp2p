@@ -11,7 +11,7 @@
     };
   };
   inputs.zls = {
-    url = "github:zigtools/zls/0.10.0";
+    url = "github:zigtools/zls/master";
     inputs = {
       nixpkgs.follows = "nixpkgs-unstable";
       zig-overlay.follows = "zig-overlay";
@@ -26,7 +26,7 @@
         pkgs = import nixpkgs { system = system; };
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         deps = (import ./dependencies.nix { inherit system; });
-        zig = zig-overlay.packages.${system}."0.10.0";
+        zig = zig-overlay.packages.${system}."0.10.1";
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
         zig-msquic-flake = ((import ./zig-msquic/flake.nix).outputs inputs);
         openssl = zig-msquic-flake.packages.${system}.openssl;
