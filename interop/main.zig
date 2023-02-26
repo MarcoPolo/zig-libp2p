@@ -1,10 +1,12 @@
 const std = @import("std");
+const os = std.os;
+const okredis = @import("./okredis/src/okredis.zig");
 const MsQuic = @import("msquic");
 const libp2p = @import("libp2p");
+const multiaddr = libp2p.multiaddr;
 const MemoryPool = libp2p.util.MemoryPool;
 const crypto = libp2p.crypto;
 const CredentialConfigHelper = @import("libp2p-msquic").crypto.CredentialConfigHelper;
-// const MsQuic = @import("msquic/msquic-wrapper.zig");
 const log = std.log;
 
 const StreamStateMachine = libp2p.stream.StreamStateMachine;
@@ -28,7 +30,7 @@ const Ping = struct {
 
     const Settings = struct {
         only_reply: bool = false,
-        target: []const u8 = "",
+        target: [:0]const u8 = "",
         target_port: u16 = 0,
     };
 
@@ -47,7 +49,7 @@ const Ping = struct {
         }
         errdefer MsQuic.MsQuicClose(msquic);
 
-        const app_name: [:0]const u8 = "ping-protocol-example";
+        const app_name: [:0]const u8 = "interop";
         const reg_config = MsQuic.QUIC_REGISTRATION_CONFIG{
             .AppName = @ptrCast([*c]const u8, app_name),
             .ExecutionProfile = MsQuic.QUIC_EXECUTION_PROFILE_LOW_LATENCY,
@@ -161,6 +163,7 @@ const Ping = struct {
         if (MsQuic.QuicStatus.isError(status)) {
             return error.ConnectionStartFailed;
         }
+        std.log.debug("Connection status: {any}", .{status});
 
         return .{ .stream_context = stream_context, .conn = conn };
     }
@@ -171,6 +174,7 @@ const Ping = struct {
 
     const ListenerContext = struct {
         ping: *Ping,
+        port: ?u16 = null,
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
         handle: MsQuic.HQUIC = undefined,
@@ -189,7 +193,7 @@ const Ping = struct {
             self.msquic.ListenerClose.?(self.handle);
         }
 
-        pub fn listen(self: *@This(), addr: []const u8, port: u16) !void {
+        pub fn listen(self: *@This(), addr: [:0]const u8, port: u16) !void {
             var status = self.msquic.ListenerOpen.?(
                 self.registration.*,
                 ListenerContext.listenerCallback,
@@ -218,11 +222,25 @@ const Ping = struct {
             if (QuicStatus.isError(status)) {
                 return error.ListenerStartFailed;
             }
+
+            std.log.debug("size is: {}", .{@sizeOf(MsQuic.QUIC_ADDR)});
+            // var buf = try self.allocator.alloc(u8, 100);
+            var s: u32 = @sizeOf(MsQuic.QUIC_ADDR);
+            _ = self.msquic.GetParam.?(
+                self.handle,
+                MsQuic.QUIC_PARAM_LISTENER_LOCAL_ADDRESS,
+                &s,
+                &quic_addr,
+            );
+            std.log.debug("Port is: {}", .{MsQuic.QuicAddrGetPort(&quic_addr)});
+            self.port = MsQuic.QuicAddrGetPort(&quic_addr);
         }
 
         fn listenerCallback(listener: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_LISTENER_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
             _ = listener;
             const self = @ptrCast(*ListenerContext, @alignCast(@alignOf(ListenerContext), self_ptr));
+
+            log.debug("Listener event: {any}", .{event.*.Type});
             switch (event.*.Type) {
                 MsQuic.QUIC_LISTENER_EVENT_NEW_CONNECTION => {
                     var conn = event.*.unnamed_0.NEW_CONNECTION.Connection;
@@ -405,8 +423,8 @@ const Ping = struct {
         }
 
         fn streamCallback(stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
-            log.info("stream event: from={any} {}\n", .{ stream, event.*.Type });
             const self = @ptrCast(*StreamContext, @alignCast(@alignOf(StreamContext), self_ptr));
+            log.info("stream event: from={any} {}\n", .{ stream, event.*.Type });
 
             switch (event.*.Type) {
                 MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
@@ -427,8 +445,10 @@ const Ping = struct {
                             const buffers = event.*.unnamed_0.RECEIVE;
                             var in_bufs = [_][]const u8{undefined} ** 32;
 
-                            for (buffers.Buffers[0..buffers.BufferCount]) |buf, i| {
+                            var i: u32 = 0;
+                            for (buffers.Buffers[0..buffers.BufferCount]) |buf| {
                                 in_bufs[i] = buf.Buffer[0..buf.Length];
+                                i += 1;
                             }
                             self.driveMultistream(&in_bufs) catch {
                                 return QuicStatus.OutOfMemory;
@@ -502,6 +522,28 @@ const Ping = struct {
                     stream_context,
                 );
             },
+            MsQuic.QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED => {
+                // The peer has sent a certificate.
+                var peer_cert_opaq = event.*.unnamed_0.PEER_CERTIFICATE_RECEIVED.Certificate orelse {
+                    std.debug.print("conn={any} Peer certificate is null\n", .{connection});
+                    return MsQuic.QuicStatus.InternalError;
+                };
+
+                var peer_cert_buf = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), peer_cert_opaq));
+                var peer_cert = peer_cert_buf.Buffer[0..peer_cert_buf.Length];
+                std.debug.print("conn={any} Peer certificate has len={}\n", .{ connection, peer_cert.len });
+                var peer_x509 = crypto.X509.initFromDer(peer_cert) catch |err| {
+                    std.debug.print("conn={any} Failed to parse peer certificate: {any}\n", .{ connection, err });
+                    return MsQuic.QuicStatus.InternalError;
+                };
+                defer peer_x509.deinit();
+
+                // var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509, self.transport.allocator) catch |err| {
+                //     std.debug.print("Failed to validate conn, closing: {any}\n", .{err});
+                //     self.transport.msquic.getQuicAPI().ConnectionShutdown.?(connection, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, 0);
+                //     return MsQuic.QuicStatus.InternalError;
+                // };
+            },
             else => {},
         }
 
@@ -509,70 +551,25 @@ const Ping = struct {
     }
 };
 
-pub fn main() anyerror!void {
-    const allocator = std.heap.c_allocator;
-    std.debug.print("\n", .{});
-    std.debug.print("Crypto is: {any}\n", .{@typeInfo(@TypeOf(crypto))});
-    std.debug.print("Starting ping\n", .{});
+fn runDialer(allocator: Allocator, redis_client: *okredis.Client) !void {
+    const FixBuf = okredis.types.FixBuf;
+    std.log.debug("waiting", .{});
+    const listenerAddrResp = try redis_client.send([2]FixBuf(128), .{ "BLPOP", "listenerAddr", "0" });
+    const listenerAddr = listenerAddrResp[1].toSlice();
+    const ma = try multiaddr.decodeMultiaddr(allocator, listenerAddr);
+    defer ma.deinit(allocator);
+
+    std.log.debug("ma ip {s}:{}", .{ ma.target, ma.port });
+    std.log.debug("ma ip {any}", .{ma.target});
+    std.log.debug("ma ip {any}", .{"127.0.0.1"});
+    std.log.debug("ma {any}", .{ma});
+
+    // TODO this has a weird panic when we fail to connect. We should have better errors
+
     var client = try Ping.init(allocator, .{
-        .target = "127.0.0.1",
-        .target_port = 9195,
-    });
-    defer client.deinit();
-
-    try client.ping();
-    std.debug.print("waiting ping\n", .{});
-    std.time.sleep(10 * std.time.ns_per_s);
-    std.debug.print("done waiting\n", .{});
-}
-
-test {
-    _ = @import("libp2p");
-}
-
-test "ping go" {
-    std.testing.log_level = .debug;
-
-    const allocator = std.testing.allocator;
-    std.debug.print("\n", .{});
-    std.debug.print("Crypto is: {any}\n", .{@typeInfo(@TypeOf(crypto))});
-    std.debug.print("Starting ping\n", .{});
-    var client = try Ping.init(allocator, .{
-        .target = "127.0.0.1",
-        .target_port = 9195,
-    });
-    defer client.deinit();
-
-    var ping_stream_and_conn = try client.ping();
-    var ping_stream = ping_stream_and_conn.stream_context;
-    var ping_conn = ping_stream_and_conn.conn;
-    defer client.msquic.ConnectionShutdown.?(ping_conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-
-    var times: u8 = 100;
-    while (times > 0) : (times -= 1) {
-        std.time.sleep(100 * std.time.ns_per_ms);
-        try ping_stream.pingOnce();
-    }
-    try ping_stream.close();
-    log.info("Shutting down", .{});
-}
-
-test "ping with server" {
-    std.testing.log_level = .debug;
-
-    const allocator = std.testing.allocator;
-    var server = try Ping.init(allocator, .{ .only_reply = true });
-    defer server.deinit();
-    var listener = server.newListener();
-    try listener.listen("127.0.0.1", 9197);
-    defer listener.deinit();
-
-    std.debug.print("\n", .{});
-    std.debug.print("Crypto is: {any}\n", .{@typeInfo(@TypeOf(crypto))});
-    std.debug.print("Starting ping\n", .{});
-    var client = try Ping.init(allocator, .{
-        .target = "127.0.0.1",
-        .target_port = 9197,
+        // .target = "localhost",
+        .target = ma.target,
+        .target_port = ma.port,
     });
     defer client.deinit();
 
@@ -582,11 +579,103 @@ test "ping with server" {
     defer client.msquic.ConnectionShutdown.?(ping_conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
     defer std.log.debug("shut down", .{});
 
-    var times: u8 = 100;
+    var times: u8 = 1;
     while (times > 0) : (times -= 1) {
         std.time.sleep(100 * std.time.ns_per_ms);
         try ping_stream.pingOnce();
+
+        var w = std.io.getStdOut().writer();
+        var handshake_plus_one_rtt: f32 = 0;
+        var ping_rtt: f32 = 0;
+        w.print("{{\"handshakePlusOneRTTMillis\":{},\"pingRTTMilllis\":{}}}", .{ handshake_plus_one_rtt, ping_rtt }) catch unreachable;
     }
     try ping_stream.close();
     log.info("Shutting down", .{});
+}
+
+fn runListener(allocator: Allocator, redis_client: *okredis.Client, ip: [:0]const u8, timeout_secs: usize) !void {
+    var server = try Ping.init(allocator, .{ .only_reply = true });
+    defer server.deinit();
+    var listener = server.newListener();
+    try listener.listen(ip, 0);
+    defer listener.deinit();
+    const serverPeerID = try (try server.host_key.toPubKey().toPeerID()).Ed25519.toLegacyString(allocator);
+    defer allocator.free(serverPeerID);
+    std.log.debug("server key = {s}", .{serverPeerID});
+    const listener_multiaddr_string = try std.fmt.allocPrint(allocator, "/ip4/{s}/udp/{}/quic-v1/p2p/{s}", .{ ip, listener.port.?, serverPeerID });
+    defer allocator.free(listener_multiaddr_string);
+    std.log.debug("multiaddr = {s} going to push", .{listener_multiaddr_string});
+    try redis_client.send(void, .{ "RPUSH", "listenerAddr", listener_multiaddr_string });
+    std.debug.print("pushed multiaddr = {s}\n", .{listener_multiaddr_string});
+
+    std.time.sleep(timeout_secs * std.time.ns_per_s);
+}
+
+pub fn main() anyerror!void {
+    // const allocator = std.testing.allocator;
+    const allocator = std.heap.c_allocator;
+    // std.debug.print("\n", .{});
+    // std.debug.print("Crypto is: {any}\n", .{@typeInfo(@TypeOf(crypto))});
+    // std.debug.print("Starting ping\n", .{});
+    // var client = try Ping.init(allocator, .{
+    //     .target = "127.0.0.1",
+    //     .target_port = 9195,
+    // });
+    // defer client.deinit();
+
+    // try client.ping();
+    // std.debug.print("waiting ping\n", .{});
+    // std.time.sleep(10 * std.time.ns_per_s);
+
+    const redisAddrEnv = std.os.getenv("redis_addr") orelse "redis:6379";
+
+    const timeout_secs = std.fmt.parseInt(usize, std.os.getenv("test_timeout_seconds") orelse "180", 10) catch unreachable;
+
+    const ip: [:0]const u8 = try std.fmt.allocPrintZ(allocator, "{s}", .{std.os.getenv("ip") orelse "0.0.0.0"});
+    defer allocator.free(ip);
+
+    const is_dialer = std.mem.eql(u8, std.os.getenv("is_dialer") orelse "", "true");
+
+    // TODO accept from env
+    var redis_parts = std.mem.split(u8, redisAddrEnv, ":");
+    const redis_host = redis_parts.next().?;
+    var redis_port = try std.fmt.parseInt(u16, redis_parts.next().?, 10);
+
+    const redis_conn = try std.net.tcpConnectToHost(allocator, redis_host, redis_port);
+    // var redis_conn = try std.net.tcpConnectToAddress(redis_addr);
+    var redis_client: okredis.Client = undefined;
+    try redis_client.init(redis_conn);
+    defer redis_client.close();
+
+    if (is_dialer) {
+        try runDialer(allocator, &redis_client);
+    } else {
+        try runListener(allocator, &redis_client, ip, timeout_secs);
+    }
+    // std.debug.print("done waiting\n", .{});
+}
+
+test {
+    std.testing.log_level = .debug;
+    const allocator = std.testing.allocator;
+
+    const timeout_secs: usize = 3;
+
+    const redis_conn = try std.net.tcpConnectToHost(allocator, "localhost", 6379);
+    var redis_client: okredis.Client = undefined;
+    try redis_client.init(redis_conn);
+    defer redis_client.close();
+
+    try redis_client.send(void, .{ "DEL", "listenerAddr" });
+
+    const redis_conn2 = try std.net.tcpConnectToHost(allocator, "localhost", 6379);
+    var redis_client2: okredis.Client = undefined;
+    try redis_client2.init(redis_conn2);
+    defer redis_client2.close();
+
+    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, &redis_client, "127.0.0.1", timeout_secs });
+    var dialer_thread = try std.Thread.spawn(.{}, runDialer, .{ allocator, &redis_client2 });
+    listener_thread.detach();
+    dialer_thread.join();
+    std.time.sleep(timeout_secs * std.time.ns_per_s);
 }

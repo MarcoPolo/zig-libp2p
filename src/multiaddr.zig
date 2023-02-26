@@ -1,22 +1,27 @@
 const std = @import("std");
+const b58 = @import("./b58.zig");
 
 /// This is not a proper multiaddr implementation.
-/// It's missing everything. It's just a placeholder really.
-pub const Multiaddr = struct {};
-
-const ip4AndPort = struct {
-    ip4: [4]u8,
+const MultiAddr = struct {
+    target: [:0]u8,
     port: u16,
+    peerID: []const u8,
+
+    pub fn deinit(self: MultiAddr, allocator: std.mem.Allocator) void {
+        allocator.free(self.target);
+        allocator.free(self.peerID);
+    }
 };
 
 // A function that takes a multiaddress string and returns an ip address and port number as a tuple
-fn decodeMultiaddr(multiaddr: []const u8) !ip4AndPort {
+pub fn decodeMultiaddr(allocator: std.mem.Allocator, multiaddr: []const u8) !MultiAddr {
     // Split the multiaddress by "/" delimiter
     var parts = std.mem.split(u8, multiaddr, "/");
 
     // Initialize variables to store ip address and port number
-    var ip: [4]u8 = undefined;
+    var ip: [:0]u8 = undefined;
     var port: u16 = undefined;
+    var peer: []u8 = undefined;
 
     // Iterate over the parts array
     while (parts.next()) |part| {
@@ -25,16 +30,7 @@ fn decodeMultiaddr(multiaddr: []const u8) !ip4AndPort {
             var maybeNextPart = parts.next();
             if (maybeNextPart) |nextPart| {
                 // Parse the ip address as four bytes separated by "."
-                var bytes = std.mem.split(u8, nextPart, ".");
-                var i: u8 = 0;
-                while (bytes.next()) |byte| : (i += 1) {
-                    if (i > 4) {
-                        return error.InvalidIPAddress;
-                    }
-                    // Convert each byte from string to integer and store it in ip array
-                    const b = std.fmt.parseInt(u8, byte, 10) catch return error.InvalidIPAddress;
-                    ip[i] = b;
-                }
+                ip = try std.fmt.allocPrintZ(allocator, "{s}", .{nextPart});
             } else {
                 return error.MissingIPAddress;
             }
@@ -47,21 +43,30 @@ fn decodeMultiaddr(multiaddr: []const u8) !ip4AndPort {
             } else {
                 return error.MissingPortNumber;
             }
+        } else if (std.mem.eql(u8, part, "p2p")) {
+            var maybeNextPart = parts.next();
+            if (maybeNextPart) |nextPart| {
+                // Parse the port number as an unsigned integer and store it in port variable
+                peer = b58.decode(allocator, nextPart) catch return error.InvalidPeerID;
+            } else {
+                return error.MissingPeerID;
+            }
         } else {}
     }
 
     // Return ip address and port number as a tuple
-    return .{
-        .ip4 = ip,
+    return MultiAddr{
+        .target = ip,
         .port = port,
+        .peerID = peer,
     };
 }
 
 test "decode simple multiaddrs" {
     const testcases = .{
-        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", ip4AndPort{ .ip4 = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
-        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", ip4AndPort{ .ip4 = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
-        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", ip4AndPort{ .ip4 = [4]u8{ 4, 3, 2, 1 }, .port = 4321 } },
+        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
+        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
+        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 4, 3, 2, 1 }, .port = 4321 } },
     };
     inline for (testcases) |tc| {
         const ipPort = try decodeMultiaddr(tc[0]);

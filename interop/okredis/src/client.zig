@@ -141,7 +141,8 @@ pub fn RedisClient(comptime buffering: Buffering, comptime _: Logging) type {
             }
             var heldWrite: std.event.Lock.Held = undefined;
             var heldRead: std.event.Lock.Held = undefined;
-            var heldReadFrame: @Frame(std.event.Lock.acquire) = undefined;
+            var heldReadFrame: if (std.io.is_async) @Frame(std.event.Lock.acquire) else void = undefined;
+            // var heldReadFrame: @Frame(std.event.Lock.acquire) = undefined;
 
             // If we're doing async/await we need to first grab the lock
             // for the write stream. Once we have it, we also need to queue

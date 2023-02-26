@@ -1,4 +1,5 @@
 const std = @import("std");
+const b58 = @import("../b58.zig");
 const protobuf = @import("../util/protobuf.zig");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -268,7 +269,21 @@ pub const PeerID = union(KeyType) {
 
             return buf;
         }
+
+        pub fn toLegacyString(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+            var bytes = (([_]u8{
+                // multihash identity
+                0x00,
+                @intCast(u8, OpenSSLKey.ED25519KeyPair.PublicKey.pb_encoded_len),
+            }) ++ [_]u8{0} ** OpenSSLKey.ED25519KeyPair.PublicKey.pb_encoded_len);
+
+            // The key should be written starting at the 2nd byte
+            _ = OpenSSLKey.ED25519KeyPair.PublicKey.serializePbFromRaw(self.pub_key_bytes, bytes[2..]);
+
+            return b58.encode(allocator, &bytes);
+        }
     },
+
     Secp256k1: struct { pub_key_bytes: [32]u8 },
     ECDSA: struct { pub_key_bytes: [64]u8 },
 
@@ -289,7 +304,7 @@ pub const PeerID = union(KeyType) {
         }
     }
 
-    fn toString(self: @This(), allocator: Allocator) ![]u8 {
+    pub fn toString(self: @This(), allocator: Allocator) ![]u8 {
         switch (self) {
             .Ed25519 => {
                 const peer_id = self.Ed25519.toString();
