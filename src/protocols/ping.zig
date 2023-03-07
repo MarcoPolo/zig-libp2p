@@ -1,139 +1,218 @@
 const std = @import("std");
+const log = std.log;
 const Allocator = std.mem.Allocator;
-const MsQuicTransport = @import("../transport/msquic.zig").MsQuicTransport;
-pub const StreamHandle = MsQuicTransport.StreamSystem.Handle;
+const MsQuic = @import("msquic");
+const QuicStatus = MsQuic.QuicStatus;
+const MemoryPool = @import("../libp2p-ng.zig").util.MemoryPool;
+const MSS = @import("./multistream_select.zig");
 
-const crypto = @import("../crypto.zig");
-const PeerID = crypto.PeerID;
+pub const id = "/ipfs/ping/1.0.0";
 
-const Libp2p = @import("../libp2p.zig").Libp2p;
-
-const Ping = struct {
-    const id = "/ipfs/ping/1.0.0";
-    const ping_size = 32;
-
-    fn handler(transport: *MsQuicTransport, stream: StreamHandle) void {
-        var frame = transport.allocator.create(@Frame(handlerAsync)) catch {
-            @panic("Failed to allocate");
-        };
-        frame.* = async handlerAsync(transport, stream);
-    }
-    fn handlerAsync(transport: *MsQuicTransport, stream: StreamHandle) void {
-        defer {
-            suspend {
-                transport.allocator.destroy(@frame());
-            }
-        }
-
-        while (true) {
-            // simple echo forever
-            var incoming_stream_ptr = transport.stream_system.handle_allocator.getPtr(stream) catch {
-                @panic("todo fixme");
-            };
-
-            var leasedBuf = incoming_stream_ptr.recvWithLease() catch |err| {
-                if (err == error.StreamClosed) {
-                    return;
-                }
-
-                @panic("todo fixme");
-            };
-
-            _ = incoming_stream_ptr.send(leasedBuf.buf) catch {
-                @panic("Failed to send");
-            };
-
-            leasedBuf.release(transport, incoming_stream_ptr);
-        }
-    }
-
-    fn initiatePing(libp2p: *Libp2p, addr: std.net.Address, peer: PeerID) !void {
-        const transport = libp2p.transport;
-        var stream_handle = try libp2p.newStream(addr, peer, id);
-
-        var i: usize = 10;
-        var buf = [_]u8{0} ** ping_size;
-
-        while (i > 0) : (i -= 1) {
-            var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-            var start = try std.time.Instant.now();
-
-            std.crypto.random.bytes(buf[0..]);
-
-            _ = try stream_ptr.send(buf[0..]);
-            std.debug.print("waiting for data\n\n", .{});
-            // TODO return error when the stream is closed
-            var leasedBuf = try stream_ptr.recvWithLease();
-
-            // Check that our bytes are the same
-            if (std.mem.eql(u8, leasedBuf.buf, buf[0..])) {
-                const dur = (try std.time.Instant.now()).since(start);
-                std.debug.print("Ping took {}. Ping countdown is {}\n", .{ dur, i });
-            } else {
-                std.debug.print("Ping packet was incorrect", .{});
-            }
-
-            leasedBuf.release(transport, stream_ptr);
-        }
-
-        var stream_ptr = try transport.stream_system.handle_allocator.getPtr(stream_handle);
-        try stream_ptr.shutdownNow();
-        return;
-    }
+pub const Event = union(enum) {
+    ready: void,
+    ping_response_received: u64, // Duration
 };
 
-test "ping protocol" {
-    const Responder = struct {
-        libp2p: Libp2p,
+pub const EventHandler = *const fn (*Handler, MsQuic.HQUIC, Event) MsQuic.QUIC_STATUS;
 
-        fn init(allocator: Allocator, host_key: crypto.ED25519KeyPair) !@This() {
-            const libp2p = try Libp2p.init(allocator, .{ .host_key = host_key });
-            return @This(){ .libp2p = libp2p };
-        }
+pub const Handler = struct {
+    const Self = @This();
+    const MultistreamSelect = MSS.MultistreamSelect(*Self, handleMSSEvent);
 
-        fn deinit(self: @This(), allocator: Allocator) void {
-            self.libp2p.deinit(allocator);
-        }
+    quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+    msg_buffer_pool: MemoryPool([1024]u8),
+    is_initiator: bool = false,
+    multistream_select: MultistreamSelect,
+    state: State,
+    msquic: *MsQuic.QUIC_API_TABLE,
+    start_time: ?std.time.Instant = null,
+    response_time: ?u64 = null,
+    pingEventHandler: EventHandler,
 
-        fn start(
-            self: *@This(),
-            waiter: *std.Thread.Semaphore,
-        ) !void {
-            var libp2p = &self.libp2p;
-            try libp2p.handleStream(Ping.id, *MsQuicTransport, self.libp2p.transport, Ping.handler);
-            try self.libp2p.listen(try std.net.Address.resolveIp("127.0.0.1", 54321));
-            waiter.post();
-            std.time.sleep(1 * std.time.ns_per_s);
-            waiter.post();
-        }
+    const State = enum {
+        negotiating_multistream,
+        ready,
+        ping_response_received,
     };
 
-    const allocator = std.testing.allocator;
-
-    var initiator_key = try crypto.ED25519KeyPair.new();
-    defer initiator_key.deinit();
-    var responder_key = try crypto.ED25519KeyPair.new();
-    defer responder_key.deinit();
-
-    var responder = try Responder.init(allocator, responder_key);
-    var waiter = std.Thread.Semaphore{};
-    var responder_start_frame = async responder.start(&waiter);
-    defer {
-        std.debug.print("\n\n\nWaiting for semaphore\n", .{});
-        waiter.wait();
-        waiter.post();
-        std.debug.print("\ndone waiting\n", .{});
-        await responder_start_frame catch {
-            @panic("Listener failed");
+    pub fn init(allocator: Allocator, eventHandler: EventHandler, msquic: *MsQuic.QUIC_API_TABLE, is_initiator: bool, initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) Self {
+        var ping = Self{
+            .pingEventHandler = eventHandler,
+            .msquic = msquic,
+            .quic_buffer_pool = initialized_quic_buffer_pool,
+            .msg_buffer_pool = MemoryPool([1024]u8).init(allocator),
+            .is_initiator = is_initiator,
+            .multistream_select = MultistreamSelect.init(allocator, msquic, &[_][]const u8{id}, is_initiator, initialized_quic_buffer_pool),
+            .state = .negotiating_multistream,
         };
+        return ping;
     }
 
-    var initator = try Libp2p.init(allocator, .{ .host_key = initiator_key });
-    defer initator.deinit(allocator);
+    pub fn deinit(self: *Self) void {
+        self.msg_buffer_pool.deinit();
+        self.multistream_select.deinit();
+    }
 
-    waiter.wait();
-    std.debug.print("Sending data\n\n", .{});
-    var peer = try (crypto.ED25519KeyPair.PublicKey{ .key = responder_key.key }).toPeerID();
-    try Ping.initiatePing(&initator, try std.net.Address.resolveIp("127.0.0.1", 54321), peer);
-    std.debug.print("xxx here", .{});
-}
+    pub fn initiate(self: *Self, stream: MsQuic.HQUIC) !void {
+        log.debug("Initiating ping protocol", .{});
+        try self.multistream_select.initiate(stream, self);
+    }
+
+    pub fn handleMSSEvent(self: *Self, _: MsQuic.HQUIC, mssEvent: MSS.MultistreamEvent) c_uint {
+        switch (mssEvent) {
+            .negotiated, .optimistically_negotiated => {
+                self.state = .ready;
+            },
+            .failed => |err| {
+                log.err("Failed to negotiate ping: {any}", .{err});
+            },
+        }
+        return QuicStatus.Success;
+    }
+
+    pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) MsQuic.QUIC_STATUS {
+        log.debug("Ping handling event: initiator={} state={} from={any} {}\n", .{ self.is_initiator, self.state, stream, event.*.Type });
+        if (self.state == .negotiating_multistream) {
+            const status = self.multistream_select.handleEvent(stream, event);
+            if (QuicStatus.isError(status)) {
+                return status;
+            }
+            if (self.multistream_select.isDone()) {
+                log.debug("Ping protocol negotiated", .{});
+            }
+            if (self.multistream_select.isDone() and std.mem.eql(u8, self.multistream_select.negotiated_protocol.?, id)) {
+                self.state = .ready;
+                return self.pingEventHandler(self, stream, .{ .ready = {} });
+            }
+            return status;
+        }
+
+        switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
+                const buffers = event.*.unnamed_0.RECEIVE;
+                if (self.is_initiator) {
+                    const status = self.handlePingResp(stream, buffers.Buffers[0..buffers.BufferCount]);
+                    if (QuicStatus.isError(status)) {
+                        return status;
+                    }
+                } else {
+                    return self.sendPong(stream, buffers.Buffers[0..buffers.BufferCount]) catch {
+                        return QuicStatus.OutOfMemory;
+                    };
+                }
+            },
+
+            MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
+                if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |ctx| {
+                    const sent_quic_buffer = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), ctx));
+                    const sent_buf = @ptrCast(*align(8) [1024]u8, @alignCast(8, sent_quic_buffer.Buffer));
+                    log.debug("Send complete for {*}", .{sent_quic_buffer});
+                    self.msg_buffer_pool.destroy(sent_buf);
+                    self.quic_buffer_pool.destroy(sent_quic_buffer);
+                }
+            },
+            MsQuic.QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE => {
+                log.debug("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE", .{});
+            },
+
+            MsQuic.QUIC_STREAM_EVENT_PEER_SEND_ABORTED, MsQuic.QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED => {
+                log.debug("Peer aborted stream\n", .{});
+                _ = self.msquic.StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+            },
+
+            MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                self.deinit();
+            },
+
+            else => {},
+        }
+
+        return QuicStatus.Success;
+    }
+
+    fn handlePingResp(self: *Self, stream: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) c_uint {
+        for (bufs) |buf| {
+            if (buf.Length == 32) {
+                if (std.mem.eql(u8, buf.Buffer[0..32], "HELLO WORLD THIS IS 32 BYTES...!")) {
+                    if (self.start_time) |start_time| {
+                        const end = std.time.Instant.now() catch {
+                            @panic("no time");
+                        };
+                        const dur = end.since(start_time);
+                        self.response_time = dur;
+                        return self.pingEventHandler(self, stream, .{ .ping_response_received = dur });
+                    }
+                } else {
+                    log.err("Wrong response: {s}", .{std.fmt.fmtSliceHexLower(buf.Buffer[0..buf.Length])});
+                    return QuicStatus.InternalError;
+                }
+            }
+        }
+        return QuicStatus.Success;
+    }
+
+    pub fn sendPingMsg(self: *Self, stream: MsQuic.HQUIC) !void {
+        self.start_time = std.time.Instant.now() catch {
+            @panic("no time");
+        };
+
+        // Start ping
+        var quic_buf_to_send = try self.quic_buffer_pool.create();
+        var buf = try self.msg_buffer_pool.create();
+        std.mem.copy(u8, buf, "HELLO WORLD THIS IS 32 BYTES...!");
+        quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
+            .Length = @intCast(u32, 32),
+            .Buffer = buf,
+        };
+        log.debug("Sending ping: {s} {}\n \n", .{ buf[0..32], 32 });
+        _ = self.msquic.StreamSend.?(
+            stream,
+            quic_buf_to_send,
+            1,
+            MsQuic.QUIC_SEND_FLAG_NONE,
+            quic_buf_to_send,
+        );
+    }
+
+    fn sendPong(self: *Self, stream_handle: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) !MsQuic.QUIC_STATUS {
+        var quic_buf_to_send = try self.quic_buffer_pool.create();
+        log.debug("Sending {*}", .{quic_buf_to_send});
+        var buf = try self.msg_buffer_pool.create();
+
+        var bytes_written: usize = 0;
+        var upto: usize = 32;
+        for (bufs) |qbuf| {
+            if (bytes_written == 32) {
+                break;
+            }
+            if (qbuf.Length < upto) {
+                upto = qbuf.Length;
+            }
+            std.mem.copy(u8, buf[bytes_written..32], qbuf.Buffer[0..upto]);
+            bytes_written += upto;
+            upto -= qbuf.Length;
+        }
+        if (bytes_written != 32) {
+            log.debug("aborting stream", .{});
+            return self.msquic.StreamShutdown.?(stream_handle, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+        }
+
+        quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
+            .Length = @intCast(u32, 32),
+            .Buffer = buf,
+        };
+
+        _ = self.msquic.StreamSend.?(
+            stream_handle,
+            quic_buf_to_send,
+            1,
+            MsQuic.QUIC_SEND_FLAG_NONE,
+            quic_buf_to_send,
+        );
+        return QuicStatus.Success;
+    }
+
+    fn close(_: *Self) void {
+        // TODO
+    }
+};

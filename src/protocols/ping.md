@@ -8,4 +8,4 @@
    the duration is recorded.
 1. Repeat indefinitely.
 
-number of random bytes from the stream. 
+32 number of random bytes from the stream. 

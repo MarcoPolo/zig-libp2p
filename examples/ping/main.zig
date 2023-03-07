@@ -359,12 +359,7 @@ const Ping = struct {
                     @panic("no time");
                 };
                 const dur = end.since(start_time);
-                log.info("Ping took: {} us", .{
-                    dur / 1000,
-                });
-                std.debug.print("Ping took: {} us\n", .{
-                    dur / 1000,
-                });
+                log.info("Ping took: {} μs", .{dur / 1000});
             }
         }
 
@@ -427,7 +422,7 @@ const Ping = struct {
                             const buffers = event.*.unnamed_0.RECEIVE;
                             var in_bufs = [_][]const u8{undefined} ** 32;
 
-                            for (buffers.Buffers[0..buffers.BufferCount]) |buf, i| {
+                            for (buffers.Buffers[0..buffers.BufferCount], 0..) |buf, i| {
                                 in_bufs[i] = buf.Buffer[0..buf.Length];
                             }
                             self.driveMultistream(&in_bufs) catch {

@@ -1,3 +1,5 @@
+const std = @import("std");
+const log = std.log;
 const MsQuic = @import("msquic");
 const crypto = @import("../crypto.zig");
 
@@ -37,3 +39,25 @@ pub const CredentialConfigHelper = struct {
         self.cred_config.Flags = MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
     }
 };
+
+pub const PeerCertError = error{ NullPeerCert, FailedToParsePeerCert, FailedToValidate };
+
+pub fn getPeerPubKey(allocator: std.mem.Allocator, certificate: ?*MsQuic.QUIC_CERTIFICATE) PeerCertError!crypto.Key {
+    var peer_cert_opaq = certificate orelse {
+        return PeerCertError.NullPeerCert;
+    };
+
+    var peer_cert_buf = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), peer_cert_opaq));
+    var peer_cert = peer_cert_buf.Buffer[0..peer_cert_buf.Length];
+    var peer_x509 = crypto.X509.initFromDer(peer_cert) catch |err| {
+        log.err("Failed to parse peer cert: {any}", .{err});
+        return PeerCertError.FailedToParsePeerCert;
+    };
+    defer peer_x509.deinit();
+
+    var peer_pub_key = crypto.Libp2pTLSCert.verify(peer_x509, allocator) catch |err| {
+        std.log.debug("Failed to validate conn, closing: {any}\n", .{err});
+        return PeerCertError.FailedToValidate;
+    };
+    return peer_pub_key;
+}

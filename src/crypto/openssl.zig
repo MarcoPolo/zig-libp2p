@@ -717,7 +717,7 @@ pub const Key = union(KeyType) {
         key_bytes: [key_len]u8,
     };
 
-    fn deinit(self: Key, allocator: Allocator) void {
+    pub fn deinit(self: Key, allocator: Allocator) void {
         _ = self;
         _ = allocator;
         // allocator.free(self.key_bytes);

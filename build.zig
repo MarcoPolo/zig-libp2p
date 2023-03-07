@@ -220,6 +220,12 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
         .source = .{
             .path = "src/libp2p-ng.zig",
         },
+        .dependencies = &[_]std.build.Pkg{.{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        }},
     });
 
     interop.setBuildMode(mode);
@@ -258,6 +264,12 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
         .source = .{
             .path = "src/libp2p-ng.zig",
         },
+        .dependencies = &[_]std.build.Pkg{.{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        }},
     });
 
     interop_test.setBuildMode(mode);
