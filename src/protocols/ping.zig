@@ -3,7 +3,7 @@ const log = std.log;
 const Allocator = std.mem.Allocator;
 const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
-const MemoryPool = @import("../libp2p-ng.zig").util.MemoryPool;
+const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
 const MSS = @import("./multistream_select.zig");
 
 pub const id = "/ipfs/ping/1.0.0";

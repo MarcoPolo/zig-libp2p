@@ -4,7 +4,7 @@ const log = std.log;
 const Allocator = std.mem.Allocator;
 const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
-const MemoryPool = @import("../libp2p-ng.zig").util.MemoryPool;
+const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
 const assert = std.debug.assert;
 
 const multistream_protocol_id_with_newline = "/multistream/1.0.0\n";

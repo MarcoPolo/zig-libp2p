@@ -18,7 +18,7 @@
         pkgs = import nixpkgs { system = system; };
         pkgs-unstable = import nixpkgs-unstable { system = system; };
         openssl = pkgs-unstable.quictls;
-        zig = zig-overlay.packages.${system}."0.10.0";
+        zig = zig-overlay.packages.${system}."0.10.1";
       in
       {
         packages.libmsquic = pkgs.callPackage (import ./msquic.nix { debug = false; }) { quictls = openssl; };

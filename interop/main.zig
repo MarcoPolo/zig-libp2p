@@ -18,6 +18,8 @@ const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;
 
+var w = std.io.getStdOut().writer();
+
 const InteropRunner = struct {
     allocator: Allocator,
 
@@ -450,7 +452,12 @@ const InteropRunner = struct {
                 },
                 .ping_response_received => |dur| {
                     log.info("Ping took: {} us", .{dur / 1000});
-                    log.info("Ping took: {any} us", .{0.0});
+                    // const g: f128 = 0;
+                    // const f = std.fmt.allocPrint(self.allocator, "Ping took: {} us", .{g}) catch {
+                    //     return QuicStatus.InternalError;
+                    // };
+                    // self.allocator.free(f);
+                    // log.info("Ping took: {any} us", .{0.0});
                 },
             }
             return QuicStatus.Success;

@@ -25,7 +25,6 @@
       let
         pkgs = import nixpkgs { system = system; };
         pkgs-unstable = import nixpkgs-unstable { system = system; };
-        deps = (import ./dependencies.nix { inherit system; });
         zig = zig-overlay.packages.${system}."0.10.1";
         # zig = zig-overlay.packages.${system}."master";
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };

@@ -1,6 +1,0 @@
-zig-cache
-.vscode*
-.idea*
-*.exe
-generator/**/*.zig
-generator/**/protoc-gen-zig*
