@@ -209,6 +209,13 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
         },
     });
 
+    interop_test.addPackage(std.build.Pkg{
+        .name = "okredis",
+        .source = .{
+            .path = "interop/okredis/src/okredis.zig",
+        },
+    });
+
     interop_test.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
         .path = "src/msquic.zig",
     }, .dependencies = &[_]std.build.Pkg{.{
@@ -249,6 +256,6 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
 
-    // try addCryptoTestStep(allocator, b, mode, test_filter);
+    try addCryptoTestStep(allocator, b, mode, test_filter);
     try buildInterop(b, allocator, mode, target, test_filter);
 }

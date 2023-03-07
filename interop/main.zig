@@ -1,6 +1,6 @@
 const std = @import("std");
 const os = std.os;
-const okredis = @import("./okredis/src/okredis.zig");
+const okredis = @import("okredis");
 const MsQuic = @import("msquic");
 const libp2p = @import("libp2p");
 const multiaddr = libp2p.multiaddr;
