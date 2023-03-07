@@ -450,7 +450,7 @@ const InteropRunner = struct {
                 },
                 .ping_response_received => |dur| {
                     log.info("Ping took: {} us", .{dur / 1000});
-                    // TODO fire another ping?
+                    log.info("Ping took: {any} us", .{0.0});
                 },
             }
             return QuicStatus.Success;
@@ -522,22 +522,11 @@ fn runDialer(allocator: Allocator, redis_client: *okredis.Client) !void {
     defer client.deinit();
 
     var ping_stream_and_conn = try client.ping();
-    var ping_stream = ping_stream_and_conn.stream_context;
+    // var ping_stream = ping_stream_and_conn.stream_context;
     var ping_conn = ping_stream_and_conn.conn;
     defer client.msquic.ConnectionShutdown.?(ping_conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-
-    // var times: u8 = 1;
-    // while (times > 0) : (times -= 1) {
-    //     std.time.sleep(100 * std.time.ns_per_ms);
-    //     try ping_stream.pingOnce();
-
-    //     var w = std.io.getStdOut().writer();
-    //     var handshake_plus_one_rtt: f32 = 0;
-    //     var ping_rtt: f32 = 0;
-    //     w.print("{{\"handshakePlusOneRTTMillis\":{},\"pingRTTMilllis\":{}}}", .{ handshake_plus_one_rtt, ping_rtt }) catch unreachable;
-    // }
     std.time.sleep(1000 * std.time.ns_per_ms);
-    try ping_stream.close();
+    // try ping_stream.close();
     log.info("Shutting down", .{});
 }
 
