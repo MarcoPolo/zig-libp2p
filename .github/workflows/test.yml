@@ -1,4 +1,4 @@
-name: "Build interop container"
+name: "Run tests"
 on:
   pull_request:
   push:
@@ -6,8 +6,16 @@ on:
       - main
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-latest
+    env:
+      COVERAGES: ""
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: cachix/install-nix-action@v20
