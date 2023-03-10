@@ -18,7 +18,7 @@ const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;
 
-var w = std.io.getStdOut().writer();
+const stdout = std.io.getStdOut();
 
 const InteropRunner = struct {
     allocator: Allocator,
@@ -33,6 +33,7 @@ const InteropRunner = struct {
     const Settings = struct {
         target: [:0]const u8 = "",
         target_port: u16 = 0,
+        done_semaphore: *Semaphore,
     };
 
     const supported_protos = [_][]const u8{Ping.id};
@@ -124,11 +125,12 @@ const InteropRunner = struct {
         errdefer self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 
         var stream_context = try self.allocator.create(StreamContext);
-        stream_context.* = StreamContext.init(self.allocator, self.msquic, true, &self.quic_buffer_pool);
+        stream_context.* = StreamContext.init(self.allocator, self.msquic, true, &self.quic_buffer_pool, std.time.Instant.now() catch unreachable);
         errdefer {
             stream_context.deinit();
             self.allocator.destroy(stream_context);
         }
+        stream_context.done_semaphore = self.settings.done_semaphore;
 
         var status = self.msquic.StreamOpen.?(
             conn,
@@ -346,7 +348,9 @@ const InteropRunner = struct {
                     defer self.allocator.destroy(self);
                     defer self.deinit();
 
-                    app_stream_context.* = StreamContext.init(self.allocator, self.msquic, false, self.quic_buffer_pool);
+                    app_stream_context.* = StreamContext.init(self.allocator, self.msquic, false, self.quic_buffer_pool, std.time.Instant.now() catch {
+                        std.debug.panic("No time", .{});
+                    });
                     app_stream_context.handle = stream;
                     app_stream_context.ping.state = .ready;
 
@@ -379,13 +383,14 @@ const InteropRunner = struct {
         msquic: *MsQuic.QUIC_API_TABLE,
         handle: MsQuic.HQUIC = undefined,
         is_initiator: bool,
+        done_semaphore: ?*Semaphore = null,
 
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
         ping: PingHandler,
 
         state: State = .ready,
 
-        start_time: ?std.time.Instant = null,
+        start_time: std.time.Instant,
 
         const PingHandler = Ping.Handler;
         const State = enum {
@@ -398,13 +403,14 @@ const InteropRunner = struct {
             send_buf: [1024]u8,
         };
 
-        pub fn init(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, is_initiator: bool, quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) @This() {
+        pub fn init(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, is_initiator: bool, quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER), start_time: std.time.Instant) @This() {
             return .{
                 .is_initiator = is_initiator,
                 .allocator = allocator,
                 .msquic = msquic,
                 .quic_buffer_pool = quic_buffer_pool,
                 .ping = PingHandler.init(allocator, handlePingEvent, msquic, is_initiator, quic_buffer_pool),
+                .start_time = start_time,
             };
         }
 
@@ -452,12 +458,17 @@ const InteropRunner = struct {
                 },
                 .ping_response_received => |dur| {
                     log.info("Ping took: {} us", .{dur / 1000});
-                    // const g: f128 = 0;
-                    // const f = std.fmt.allocPrint(self.allocator, "Ping took: {} us", .{g}) catch {
-                    //     return QuicStatus.InternalError;
-                    // };
-                    // self.allocator.free(f);
-                    // log.info("Ping took: {any} us", .{0.0});
+                    const durMs = @intToFloat(f32, dur) / 1_000_000;
+                    const stdout_writer = stdout.writer();
+                    const now = std.time.Instant.now() catch {
+                        return QuicStatus.InternalError;
+                    };
+                    const durSinceStart = @intToFloat(f32, now.since(self.start_time)) / std.time.ns_per_ms;
+                    _ = stdout_writer.write("bytes: []const u8") catch unreachable;
+                    stdout_writer.print("{{\"handshakePlusOneRTTMillis\": {d:.3}, \"pingRTTMilllis\": {d:.3}}}\n", .{ durSinceStart, durMs }) catch unreachable;
+                    if (self.done_semaphore) |sem| {
+                        sem.post();
+                    }
                 },
             }
             return QuicStatus.Success;
@@ -509,36 +520,31 @@ const InteropRunner = struct {
     }
 };
 
-fn runDialer(allocator: Allocator, redis_client: *okredis.Client) !void {
-    const FixBuf = okredis.types.FixBuf;
-    std.log.debug("waiting", .{});
-    const listenerAddrResp = try redis_client.send([2]FixBuf(128), .{ "BLPOP", "listenerAddr", "0" });
-    const listenerAddr = listenerAddrResp[1].toSlice();
-    const ma = try multiaddr.decodeMultiaddr(allocator, listenerAddr);
+fn runDialer(allocator: Allocator, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
+    var done_semaphore = Semaphore{};
+    addr_semaphore.wait();
+
+    const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
     defer ma.deinit(allocator);
 
-    std.log.debug("ma {any}", .{ma});
-
-    // TODO this has a weird panic when we fail to connect. We should have better errors
-
     var client = try InteropRunner.init(allocator, .{
-        // .target = "localhost",
         .target = ma.target,
         .target_port = ma.port,
+        .done_semaphore = &done_semaphore,
     });
     defer client.deinit();
 
     var ping_stream_and_conn = try client.ping();
-    // var ping_stream = ping_stream_and_conn.stream_context;
     var ping_conn = ping_stream_and_conn.conn;
     defer client.msquic.ConnectionShutdown.?(ping_conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-    std.time.sleep(1000 * std.time.ns_per_ms);
-    // try ping_stream.close();
+    // Wait for done
+    done_semaphore.wait();
     log.info("Shutting down", .{});
 }
 
-fn runListener(allocator: Allocator, redis_client: *okredis.Client, ip: [:0]const u8, timeout_secs: usize) !void {
-    var server = try InteropRunner.init(allocator, .{});
+fn runListener(allocator: Allocator, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
+    var done_sem = Semaphore{};
+    var server = try InteropRunner.init(allocator, .{ .done_semaphore = &done_sem });
     defer server.deinit();
     var listener = server.newListener();
     try listener.listen(ip, 0);
@@ -547,16 +553,17 @@ fn runListener(allocator: Allocator, redis_client: *okredis.Client, ip: [:0]cons
     defer allocator.free(serverPeerID);
     const listener_multiaddr_string = try std.fmt.allocPrint(allocator, "/ip4/{s}/udp/{}/quic-v1/p2p/{s}", .{ ip, listener.port.?, serverPeerID });
     defer allocator.free(listener_multiaddr_string);
-    try redis_client.send(void, .{ "RPUSH", "listenerAddr", listener_multiaddr_string });
+    out_listener_multiaddr.ptr = listener_multiaddr_string.ptr;
+    out_listener_multiaddr.len = listener_multiaddr_string.len;
 
-    std.time.sleep(timeout_secs * std.time.ns_per_s);
+    addr_semaphore.post();
+    shutdown_semaphore.wait();
 }
 
 pub fn main() anyerror!void {
     const allocator = std.heap.c_allocator;
 
     const redisAddrEnv = std.os.getenv("redis_addr") orelse "redis:6379";
-
     const timeout_secs = std.fmt.parseInt(usize, std.os.getenv("test_timeout_seconds") orelse "180", 10) catch unreachable;
 
     const ip: [:0]const u8 = try std.fmt.allocPrintZ(allocator, "{s}", .{std.os.getenv("ip") orelse "0.0.0.0"});
@@ -574,9 +581,21 @@ pub fn main() anyerror!void {
     defer redis_client.close();
 
     if (is_dialer) {
-        try runDialer(allocator, &redis_client);
+        const FixBuf = okredis.types.FixBuf;
+        const listener_addr_resp = try redis_client.send([2]FixBuf(128), .{ "BLPOP", "listenerAddr", "0" });
+        const listener_addr = listener_addr_resp[1].toSlice();
+        var addr_semaphore = Semaphore{ .permits = 1 };
+        try runDialer(allocator, &listener_addr, &addr_semaphore);
     } else {
-        try runListener(allocator, &redis_client, ip, timeout_secs);
+        var shutdown_listener_sem: Semaphore = .{};
+        var listener_multiaddr_semaphore: Semaphore = .{};
+        var listener_multiaddr: []const u8 = undefined;
+        var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, "127.0.0.1", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+        listener_multiaddr_semaphore.wait();
+        try redis_client.send(void, .{ "RPUSH", "listenerAddr", listener_multiaddr });
+        std.time.sleep(timeout_secs * std.time.ns_per_s);
+        shutdown_listener_sem.post();
+        listener_thread.join();
     }
 }
 
@@ -584,23 +603,13 @@ test "ping interop" {
     std.testing.log_level = .info;
     const allocator = std.testing.allocator;
 
-    const timeout_secs: usize = 3;
+    var shutdown_listener_sem: Semaphore = .{};
+    var listener_multiaddr_semaphore: Semaphore = .{};
+    var listener_multiaddr: []const u8 = undefined;
 
-    const redis_conn = try std.net.tcpConnectToHost(allocator, "localhost", 6379);
-    var redis_client: okredis.Client = undefined;
-    try redis_client.init(redis_conn);
-    defer redis_client.close();
+    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, "127.0.0.1", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+    try runDialer(allocator, &listener_multiaddr, &listener_multiaddr_semaphore);
 
-    try redis_client.send(void, .{ "DEL", "listenerAddr" });
-
-    const redis_conn2 = try std.net.tcpConnectToHost(allocator, "localhost", 6379);
-    var redis_client2: okredis.Client = undefined;
-    try redis_client2.init(redis_conn2);
-    defer redis_client2.close();
-
-    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, &redis_client, "127.0.0.1", timeout_secs });
-    var dialer_thread = try std.Thread.spawn(.{}, runDialer, .{ allocator, &redis_client2 });
-    listener_thread.detach();
-    dialer_thread.join();
-    std.time.sleep(timeout_secs * std.time.ns_per_s);
+    shutdown_listener_sem.post();
+    listener_thread.join();
 }

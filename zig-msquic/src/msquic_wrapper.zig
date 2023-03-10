@@ -1646,36 +1646,40 @@ pub fn QuicAddrIsWildCard(Addr: [*c]const QUIC_ADDR) callconv(.C) BOOLEAN {
     }
     return 0;
 }
-pub fn QuicAddr4FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
-    var AddrStr = arg_AddrStr;
-    var Addr = arg_Addr;
-    if (@bitCast(c_int, @as(c_uint, AddrStr[@intCast(c_uint, @as(c_int, 0))])) == @as(c_int, '[')) {
-        return 0;
-    }
-    var PortStart: [*c]const u8 = strchr(AddrStr, @as(c_int, ':'));
-    if (PortStart != @ptrCast([*c]const u8, @alignCast(@import("std").meta.alignment([*c]const u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
-        if (strchr(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))), @as(c_int, ':')) != @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
-            return 0;
-        }
-        var TmpAddrStr: [16]u8 = undefined;
-        var AddrLength: usize = @bitCast(usize, @divExact(@bitCast(c_long, @ptrToInt(PortStart) -% @ptrToInt(AddrStr)), @sizeOf(u8)));
-        if (AddrLength >= @sizeOf([16]u8)) {
-            return 0;
-        }
-        _ = __builtin___memcpy_chk(@ptrCast(?*anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @ptrCast(?*const anyopaque, AddrStr), AddrLength, __builtin_object_size(@ptrCast(?*const anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @as(c_int, 0)));
-        TmpAddrStr[AddrLength] = '\x00';
-        if (inet_pton(@as(c_int, 2), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr)), @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
-            return 0;
-        }
-        Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))))) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(@bitCast(u16, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))))));
-    } else {
-        if (inet_pton(@as(c_int, 2), AddrStr, @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
-            return 0;
-        }
-    }
-    Addr.*.Ip.sa_family = 2;
-    return 1;
-}
+
+pub extern fn QuicAddr4FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN;
+// pub fn QuicAddr4FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
+//     var AddrStr = arg_AddrStr;
+//     var Addr = arg_Addr;
+//     if (@bitCast(c_int, @as(c_uint, AddrStr[@intCast(c_uint, @as(c_int, 0))])) == @as(c_int, '[')) {
+//         return 0;
+//     }
+//     var PortStart: [*c]const u8 = strchr(AddrStr, @as(c_int, ':'));
+//     if (PortStart != @ptrCast([*c]const u8, @alignCast(@import("std").meta.alignment([*c]const u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
+//         if (strchr(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))), @as(c_int, ':')) != @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), @intToPtr(?*anyopaque, @as(c_int, 0))))) {
+//             return 0;
+//         }
+//         var TmpAddrStr: [16]u8 = undefined;
+//         var AddrLength: usize = @bitCast(usize, @divExact(@bitCast(c_long, @ptrToInt(PortStart) -% @ptrToInt(AddrStr)), @sizeOf(u8)));
+//         if (AddrLength >= @sizeOf([16]u8)) {
+//             return 0;
+//         }
+//         _ = __builtin___memcpy_chk(@ptrCast(?*anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @ptrCast(?*const anyopaque, AddrStr), AddrLength, __builtin_object_size(@ptrCast(?*const anyopaque, @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr))), @as(c_int, 0)));
+//         TmpAddrStr[AddrLength] = '\x00';
+//         if (inet_pton(@as(c_int, 2), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment([*c]u8), &TmpAddrStr)), @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
+//             return 0;
+//         }
+//         // This line breaks the linker/compiler?
+//         // Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))))) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(@bitCast(u16, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))))));
+//         Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1))))) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(@bitCast(u16, @truncate(c_short, atoi(PortStart + @bitCast(usize, @intCast(isize, @as(c_int, 1)))))))))));
+//     } else {
+//         if (inet_pton(@as(c_int, 2), AddrStr, @ptrCast(?*anyopaque, &Addr.*.Ipv4.sin_addr)) != @as(c_int, 1)) {
+//             return 0;
+//         }
+//     }
+//     Addr.*.Ip.sa_family = 2;
+//     return 1;
+// }
 pub fn QuicAddr6FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
     var AddrStr = arg_AddrStr;
     var Addr = arg_Addr;

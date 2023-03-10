@@ -6,6 +6,9 @@ const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
 const MSS = @import("./multistream_select.zig");
 
+var rng = std.rand.DefaultPrng.init(0);
+const random = rng.random();
+
 pub const id = "/ipfs/ping/1.0.0";
 
 pub const Event = union(enum) {
@@ -20,7 +23,7 @@ pub const Handler = struct {
     const MultistreamSelect = MSS.MultistreamSelect(*Self, handleMSSEvent);
 
     quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-    msg_buffer_pool: MemoryPool([1024]u8),
+    sent_msg: [32]u8 = [_]u8{0} ** 32,
     is_initiator: bool = false,
     multistream_select: MultistreamSelect,
     state: State,
@@ -40,7 +43,6 @@ pub const Handler = struct {
             .pingEventHandler = eventHandler,
             .msquic = msquic,
             .quic_buffer_pool = initialized_quic_buffer_pool,
-            .msg_buffer_pool = MemoryPool([1024]u8).init(allocator),
             .is_initiator = is_initiator,
             .multistream_select = MultistreamSelect.init(allocator, msquic, &[_][]const u8{id}, is_initiator, initialized_quic_buffer_pool),
             .state = .negotiating_multistream,
@@ -49,7 +51,6 @@ pub const Handler = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.msg_buffer_pool.deinit();
         self.multistream_select.deinit();
     }
 
@@ -105,9 +106,6 @@ pub const Handler = struct {
             MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
                 if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |ctx| {
                     const sent_quic_buffer = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), ctx));
-                    const sent_buf = @ptrCast(*align(8) [1024]u8, @alignCast(8, sent_quic_buffer.Buffer));
-                    log.debug("Send complete for {*}", .{sent_quic_buffer});
-                    self.msg_buffer_pool.destroy(sent_buf);
                     self.quic_buffer_pool.destroy(sent_quic_buffer);
                 }
             },
@@ -133,7 +131,7 @@ pub const Handler = struct {
     fn handlePingResp(self: *Self, stream: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) c_uint {
         for (bufs) |buf| {
             if (buf.Length == 32) {
-                if (std.mem.eql(u8, buf.Buffer[0..32], "HELLO WORLD THIS IS 32 BYTES...!")) {
+                if (std.mem.eql(u8, buf.Buffer[0..32], &self.sent_msg)) {
                     if (self.start_time) |start_time| {
                         const end = std.time.Instant.now() catch {
                             @panic("no time");
@@ -158,13 +156,12 @@ pub const Handler = struct {
 
         // Start ping
         var quic_buf_to_send = try self.quic_buffer_pool.create();
-        var buf = try self.msg_buffer_pool.create();
-        std.mem.copy(u8, buf, "HELLO WORLD THIS IS 32 BYTES...!");
+        random.bytes(self.sent_msg[0..]);
         quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
             .Length = @intCast(u32, 32),
-            .Buffer = buf,
+            .Buffer = self.sent_msg[0..],
         };
-        log.debug("Sending ping: {s} {}\n \n", .{ buf[0..32], 32 });
+        log.debug("Sending ping: {s} {}\n \n", .{ std.fmt.fmtSliceHexLower(self.sent_msg[0..32]), 32 });
         _ = self.msquic.StreamSend.?(
             stream,
             quic_buf_to_send,
@@ -177,7 +174,6 @@ pub const Handler = struct {
     fn sendPong(self: *Self, stream_handle: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) !MsQuic.QUIC_STATUS {
         var quic_buf_to_send = try self.quic_buffer_pool.create();
         log.debug("Sending {*}", .{quic_buf_to_send});
-        var buf = try self.msg_buffer_pool.create();
 
         var bytes_written: usize = 0;
         var upto: usize = 32;
@@ -188,7 +184,7 @@ pub const Handler = struct {
             if (qbuf.Length < upto) {
                 upto = qbuf.Length;
             }
-            std.mem.copy(u8, buf[bytes_written..32], qbuf.Buffer[0..upto]);
+            std.mem.copy(u8, self.sent_msg[bytes_written..32], qbuf.Buffer[0..upto]);
             bytes_written += upto;
             upto -= qbuf.Length;
         }
@@ -199,7 +195,7 @@ pub const Handler = struct {
 
         quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
             .Length = @intCast(u32, 32),
-            .Buffer = buf,
+            .Buffer = &self.sent_msg,
         };
 
         _ = self.msquic.StreamSend.?(

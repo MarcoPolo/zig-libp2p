@@ -156,91 +156,62 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
 
 pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
     const msquic_builder = @import("./zig-msquic/build.zig");
-    // const interop = b.addExecutable("interop", "interop/main.zig");
 
-    // interop.addPackage(std.build.Pkg{
-    //     .name = "msquic",
-    //     .source = .{
-    //         .path = "zig-msquic/src/msquic_wrapper.zig",
-    //     },
-    // });
-
-    // interop.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
-    //     .path = "src/msquic.zig",
-    // }, .dependencies = &[_]std.build.Pkg{.{
-    //     .name = "msquic",
-    //     .source = .{
-    //         .path = "zig-msquic/src/msquic_wrapper.zig",
-    //     },
-    // }} });
-    // interop.addPackage(std.build.Pkg{
-    //     .name = "libp2p",
-    //     .source = .{
-    //         .path = "src/libp2p.zig",
-    //     },
-    //     .dependencies = &[_]std.build.Pkg{.{
-    //         .name = "msquic",
-    //         .source = .{
-    //             .path = "zig-msquic/src/msquic_wrapper.zig",
-    //         },
-    //     }},
-    // });
-
-    // interop.setBuildMode(mode);
-
-    // try msquic_builder.linkMsquic(allocator, target, interop, true);
-    // try includeLibSystemFromNix(allocator, interop);
-
-    // const interop_step = b.step("interop", "Build interop binary");
-    // interop_step.dependOn(&b.addInstallArtifact(interop).step);
-
-    // const run_interop_step = b.step("run-interop", "Run interop");
-    // run_interop_step.dependOn(&interop.run().step);
-
+    const interop = b.addExecutable("interop", "interop/main.zig");
     const interop_test = b.addTest("interop/main.zig");
     interop_test.filter = test_filter;
-    try msquic_builder.linkMsquic(allocator, target, interop_test, true);
-    try includeLibSystemFromNix(allocator, interop_test);
 
-    interop_test.addPackage(std.build.Pkg{
-        .name = "msquic",
-        .source = .{
-            .path = "zig-msquic/src/msquic_wrapper.zig",
-        },
-    });
+    // Add packages and link
+    inline for (.{ interop, interop_test }) |step| {
+        try msquic_builder.linkMsquic(allocator, target, step, true);
+        try includeLibSystemFromNix(allocator, step);
 
-    interop_test.addPackage(std.build.Pkg{
-        .name = "okredis",
-        .source = .{
-            .path = "interop/okredis/src/okredis.zig",
-        },
-    });
-
-    interop_test.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
-        .path = "src/msquic.zig",
-    }, .dependencies = &[_]std.build.Pkg{.{
-        .name = "msquic",
-        .source = .{
-            .path = "zig-msquic/src/msquic_wrapper.zig",
-        },
-    }} });
-    interop_test.addPackage(std.build.Pkg{
-        .name = "libp2p",
-        .source = .{
-            .path = "src/libp2p.zig",
-        },
-        .dependencies = &[_]std.build.Pkg{.{
+        step.addPackage(std.build.Pkg{
             .name = "msquic",
             .source = .{
                 .path = "zig-msquic/src/msquic_wrapper.zig",
             },
-        }},
-    });
+        });
 
-    interop_test.setBuildMode(mode);
+        step.addPackage(std.build.Pkg{
+            .name = "okredis",
+            .source = .{
+                .path = "interop/okredis/src/okredis.zig",
+            },
+        });
+
+        step.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
+            .path = "src/msquic.zig",
+        }, .dependencies = &[_]std.build.Pkg{.{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        }} });
+        step.addPackage(std.build.Pkg{
+            .name = "libp2p",
+            .source = .{
+                .path = "src/libp2p.zig",
+            },
+            .dependencies = &[_]std.build.Pkg{.{
+                .name = "msquic",
+                .source = .{
+                    .path = "zig-msquic/src/msquic_wrapper.zig",
+                },
+            }},
+        });
+
+        step.setBuildMode(mode);
+    }
 
     const test_interop_step = b.step("run-interop-test", "Run interop self test");
     test_interop_step.dependOn(&interop_test.step);
+
+    const interop_step = b.step("interop", "Build interop binary");
+    interop_step.dependOn(&b.addInstallArtifact(interop).step);
+
+    const run_interop_step = b.step("run-interop", "Run interop");
+    run_interop_step.dependOn(&interop.run().step);
 }
 
 pub fn build(b: *std.build.Builder) anyerror!void {
