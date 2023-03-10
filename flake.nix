@@ -94,9 +94,7 @@
         packages.zig-libp2p-fhs = (pkgs.buildFHSUserEnv {
           name = "code-server-env";
           targetPkgs = pkgs: (with pkgs;
-            [ glibc ]);
-          multiPkgs = pkgs: (with pkgs;
-            [ glibc ]);
+            [ glibc  openssl ]);
           runScript = "/usr/bin/bash";
         });
 
