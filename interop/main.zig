@@ -155,11 +155,29 @@ const InteropRunner = struct {
 
         try stream_context.ping.initiate(stream_context.handle);
 
+        var quic_addr_to_dial: MsQuic.QUIC_ADDR = undefined;
+        var res = MsQuic.QuicAddrFromString(self.settings.target.ptr, self.settings.target_port, &quic_addr_to_dial);
+        if (res != 1) {
+            std.debug.panic("Failed to parse address: {}", .{res});
+        }
+
+        // We set the remote address here instead of in connection start so that we don't set the IP address.
+        const set_param_result = self.msquic.SetParam.?(
+            conn,
+            MsQuic.QUIC_PARAM_CONN_REMOTE_ADDRESS,
+            @sizeOf(MsQuic.QUIC_ADDR),
+            &quic_addr_to_dial,
+        );
+        if (set_param_result != 0) {
+            log.err("Failed to set remote address param: {}", .{set_param_result});
+            unreachable;
+        }
+
         status = self.msquic.ConnectionStart.?(
             conn,
             self.configuration,
             MsQuic.QUIC_ADDRESS_FAMILY_UNSPEC,
-            @ptrCast([*c]const u8, self.settings.target),
+            null,
             self.settings.target_port,
         );
 
@@ -568,13 +586,8 @@ fn runDialer(allocator: Allocator, listener_multiaddr: *const []const u8, addr_s
     const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
     defer ma.deinit(allocator);
 
-    const target = if (std.mem.eql(u8, std.os.getenv("dialer_workaround") orelse "", "true"))
-        "listener" // MsQuic will always send the IP address as the SNI, which rust-libp2p isn't happy about. See: https://github.com/microsoft/msquic/issues/3493
-    else
-        ma.target;
-
     var client = try InteropRunner.init(allocator, .{
-        .target = target,
+        .target = ma.target,
         .target_port = ma.port,
         .done_semaphore = &done_semaphore,
     });

@@ -1707,13 +1707,14 @@ pub fn QuicAddr6FromString(arg_AddrStr: [*c]const u8, arg_Addr: [*c]QUIC_ADDR) c
     Addr.*.Ip.sa_family = 30;
     return 1;
 }
-pub fn QuicAddrFromString(arg_AddrStr: [*c]const u8, arg_Port: u16, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
-    var AddrStr = arg_AddrStr;
-    var Port = arg_Port;
-    var Addr = arg_Addr;
-    Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Port)))));
-    return @bitCast(BOOLEAN, @truncate(i8, @boolToInt((@bitCast(c_int, @as(c_uint, QuicAddr4FromString(AddrStr, Addr))) != 0) or (@bitCast(c_int, @as(c_uint, QuicAddr6FromString(AddrStr, Addr))) != 0))));
-}
+pub extern fn QuicAddrFromString(arg_AddrStr: [*c]const u8, arg_Port: u16, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN;
+// pub fn QuicAddrFromString(arg_AddrStr: [*c]const u8, arg_Port: u16, arg_Addr: [*c]QUIC_ADDR) callconv(.C) BOOLEAN {
+//     var AddrStr = arg_AddrStr;
+//     var Port = arg_Port;
+//     var Addr = arg_Addr;
+//     Addr.*.Ipv4.sin_port = @bitCast(__uint16_t, @truncate(c_short, if (__builtin_constant_p(Port) != 0) @bitCast(c_int, @as(c_uint, @bitCast(__uint16_t, @truncate(c_ushort, ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 65280)) >> @intCast(@import("std").math.Log2Int(c_uint), 8)) | ((@bitCast(c_uint, @as(c_uint, @bitCast(__uint16_t, Port))) & @as(c_uint, 255)) << @intCast(@import("std").math.Log2Int(c_uint), 8)))))) else @bitCast(c_int, @as(c_uint, _OSSwapInt16(Port)))));
+//     return @bitCast(BOOLEAN, @truncate(i8, @boolToInt((@bitCast(c_int, @as(c_uint, QuicAddr4FromString(AddrStr, Addr))) != 0) or (@bitCast(c_int, @as(c_uint, QuicAddr6FromString(AddrStr, Addr))) != 0))));
+// }
 pub const struct_QUIC_ADDR_STR = extern struct {
     Address: [64]u8,
 };
