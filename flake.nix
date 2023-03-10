@@ -89,7 +89,14 @@
             installPhase = ''
               cp -r zig-out $out
             '';
+        };
+
+        packages.interopContainer = pkgs.dockerTools.buildImage {
+          name = "interop-runner";
+          config = {
+            Cmd = ["${self.packages.${system}.interop}/bin/interop"];
           };
+        };
 
         packages.zig-libp2p-fhs = (pkgs.buildFHSUserEnv {
           name = "code-server-env";
