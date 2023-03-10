@@ -25,7 +25,21 @@ jobs:
         with:
           name: zig-libp2p
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Restore Zig Cache
+        id: zig-cache-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            zig-cache
+          key: ${{ runner.os }}-zig-cache
       - run: nix develop . -c zig build crypto-tests
       - run: ./zig-out/bin/crypto-tests
       - run: nix develop . -c zig build interop-test
       - run: ./zig-out/bin/interop-test
+      - name: Save zig cache
+        id: zig-cache-save
+        uses: actions/cache/save@v3
+        with:
+          path: |
+            zig-cache
+          key: ${{ steps.zig-cache-restore.outputs.cache-primary-key }}
