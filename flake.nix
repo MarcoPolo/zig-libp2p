@@ -1,6 +1,6 @@
 {
   description = "zig-libp2p";
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/release-21.11";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/release-22.05";
   inputs.nixpkgs-unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.zig-overlay = {
@@ -58,9 +58,9 @@
         #   '';
         #   XDG_CACHE_HOME = ".cache";
         # };
-        packages.bandwidthPerf = pkgs.stdenv.mkDerivation
+        packages.interop = pkgs.stdenv.mkDerivation
           {
-            name = "bandwidthPerf";
+            name = "interop-binary";
             src = ./.;
             nativeBuildInputs = [
               pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
@@ -76,7 +76,6 @@
             else [ ]);
             LIBSYSTEM_INCLUDE = (if pkgs.stdenv.isDarwin then
               "${pkgs.darwin.Libsystem.outPath}/include" else "");
-            PB_INCLUDE = "${pkgs.protobufc}/include";
             LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
             LIB_OPENSSL = "${openssl.dev}";
             ZIG_DEPS = "${zig-deps.depsJson}";
@@ -85,7 +84,7 @@
               # cp -r . $build_dir
               # cd $build_dir
               export HOME=$PWD
-              ${zig}/bin/zig build bandwidth_perf
+              ${zig}/bin/zig build interop
             '';
             installPhase = ''
               cp -r zig-out $out
@@ -111,6 +110,7 @@
                 self.packages.${system}.zls
                 openssl
                 # pkgs.pkg-config
+                glibc
               ]
               ++ (if pkgs.stdenv.isDarwin
               then
