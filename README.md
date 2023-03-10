@@ -1,5 +1,12 @@
 # The Zig implementation of the libp2p networking stack
 
+[libp2p] is a collection of protocols, implementations, and transports to
+facilitate peer-to-peer applications.
+
+[Zig] is a general-purpose programming language and toolchain for maintaining robust, optimal and reusable software.
+
+Zig + libp2p = ⚡ 🌐 🚀
+
 ## Design principles
 
 `zig zen`
@@ -42,4 +49,6 @@ zig build interop-test && ./zig-out/bin/interop-test
 [MsQuic] dependency relies on [Nix](https://nixos.org/). You can link it without
 Nix, but you'll have to do that yourself.
 
+[libp2p]: https://libp2p.io
 [MsQuic]: https://github.com/microsoft/msquic
+[Zig]: https://ziglang.org
