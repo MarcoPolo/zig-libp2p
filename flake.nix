@@ -110,10 +110,7 @@
                 zig
                 self.packages.${system}.zls
                 openssl
-                pkgs.pkg-config
-                pkgs.protobufc
-                pkgs.protobuf
-                pkgs.go_1_17
+                # pkgs.pkg-config
               ]
               ++ (if pkgs.stdenv.isDarwin
               then

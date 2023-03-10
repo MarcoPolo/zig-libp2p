@@ -27,18 +27,6 @@ rec {
     };
   };
 
-  depsWrapper = pkgs.writeTextFile
-    {
-      name = "deps.zig";
-      text = ''
-        const pkgs = struct {
-            const base32 = std.build.pkg{
-                .name = "base32",
-                .path = .{ .path = "${base32.src}/src/base32.zig" },
-            };
-        };
-      '';
-    };
   depsJson = pkgs.writeTextFile
     {
       name = "deps.json";
