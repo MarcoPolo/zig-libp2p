@@ -142,7 +142,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     l.linkFramework("CoreFoundation");
 }
 
-fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: std.builtin.Mode, test_filter: []const u8) !void {
+fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) !void {
     const tests = b.addTest("src/crypto.zig");
     tests.setBuildMode(mode);
     // Handle reading zig-deps.nix output
@@ -150,6 +150,13 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     tests.filter = test_filter;
     try linkOpenssl(allocator, tests);
     try includeLibSystemFromNix(allocator, tests);
+
+    const os = target.os_tag orelse builtin.os.tag;
+
+    if (os == .linux) {
+        tests.linkLibC();
+    }
+
     const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
     tests_step.dependOn(&tests.step);
 }
@@ -227,6 +234,6 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
 
-    try addCryptoTestStep(allocator, b, mode, test_filter);
+    try addCryptoTestStep(allocator, b, mode, target, test_filter);
     try buildInterop(b, allocator, mode, target, test_filter);
 }
