@@ -8,3 +8,4 @@ COPY zig-deps.nix ./
 RUN nix --extra-experimental-features nix-command --extra-experimental-features flakes develop
 
 COPY . .
+RUN nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#interop'
