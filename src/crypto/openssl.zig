@@ -1,5 +1,5 @@
 const std = @import("std");
-const b58 = @import("../b58.zig");
+const b58 = @import("../multibase/b58.zig");
 const protobuf = @import("../util/protobuf.zig");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;

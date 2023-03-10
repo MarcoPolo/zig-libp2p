@@ -2,8 +2,3 @@ zig-cache
 zig-out
 .direnv
 result
-# Locally testing
-msquic2
-
-# Ignoring for now
-pb

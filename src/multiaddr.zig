@@ -1,5 +1,5 @@
 const std = @import("std");
-const b58 = @import("./b58.zig");
+const b58 = @import("./multibase/b58.zig");
 
 /// This is not a proper multiaddr implementation.
 const MultiAddr = struct {
