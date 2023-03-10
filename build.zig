@@ -142,7 +142,7 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     l.linkFramework("CoreFoundation");
 }
 
-fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.Tag, step: *std.build.Step, filename: []const u8) *std.build.Step {
+fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.Tag, step: *std.build.Step, filename: []const u8) !*std.build.Step {
     const elf_interpreter = std.os.getenv("ELF_INTERPRETER") orelse "";
     if (os == .linux and (elf_interpreter).len > 0) {
         const path = try std.fmt.allocPrint(allocator, "./zig-out/bin/{s}", .{filename});
@@ -151,6 +151,7 @@ fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.
             "patchelf",
             "--set-interpreter",
             elf_interpreter,
+            path,
         });
         patchElf.step.dependOn(step);
 
@@ -158,7 +159,7 @@ fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.
         tests_step.dependOn(&patchElf.step);
         return &patchElf.step;
     } else {
-        return &step;
+        return step;
     }
 }
 
@@ -176,10 +177,10 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     if (os == .linux) {
         tests.linkLibC();
     }
-    const install_test = b.addInstallArtifact(tests);
+    var install_test = b.addInstallArtifact(tests);
 
     const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
-    tests_step.dependOn(maybePatchElf(allocator, b, os, &install_test.step, tests.out_filename));
+    tests_step.dependOn(try maybePatchElf(allocator, b, os, &install_test.step, tests.out_filename));
 }
 
 pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
@@ -235,8 +236,9 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
     const test_interop_step = b.step("run-interop-test", "Run interop self test");
     test_interop_step.dependOn(&interop_test.step);
 
+    const os = target.os_tag orelse builtin.os.tag;
     const interop_step = b.step("interop", "Build interop binary");
-    interop_step.dependOn(&b.addInstallArtifact(interop).step);
+    interop_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(interop).step, interop.out_filename));
 
     const run_interop_step = b.step("run-interop", "Run interop");
     run_interop_step.dependOn(&interop.run().step);
