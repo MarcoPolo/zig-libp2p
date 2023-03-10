@@ -18,6 +18,10 @@ const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;
 
+const ifaddrs = @cImport({
+    @cInclude("ifaddrs.h");
+});
+
 const stdout = std.io.getStdOut();
 
 const InteropRunner = struct {
@@ -177,6 +181,7 @@ const InteropRunner = struct {
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
         handle: MsQuic.HQUIC = undefined,
+        listening_addrs: std.ArrayList([]const u8),
         registration: *MsQuic.HQUIC,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
 
@@ -187,10 +192,15 @@ const InteropRunner = struct {
                 .msquic = msquic,
                 .registration = registration,
                 .quic_buffer_pool = quic_buffer_pool,
+                .listening_addrs = std.ArrayList([]const u8).init(allocator),
             };
             return self;
         }
         pub fn deinit(self: *@This()) void {
+            for (self.listening_addrs.items) |addr| {
+                self.allocator.free(addr);
+            }
+            self.listening_addrs.deinit();
             self.msquic.ListenerClose.?(self.handle);
         }
 
@@ -232,6 +242,37 @@ const InteropRunner = struct {
                 &quic_addr,
             );
             self.port = MsQuic.QuicAddrGetPort(&quic_addr);
+            var addr_str: MsQuic.QUIC_ADDR_STR = std.mem.zeroes(MsQuic.QUIC_ADDR_STR);
+
+            _ = MsQuic.QuicAddrToString(&quic_addr, &addr_str);
+            const port_sep = std.mem.lastIndexOf(u8, &addr_str.Address, ":") orelse addr_str.Address.len;
+            if (std.mem.eql(u8, addr_str.Address[0..port_sep], "0.0.0.0")) {
+                var res: [*c]ifaddrs.struct_ifaddrs = undefined;
+                if (ifaddrs.getifaddrs(&res) != 0) {
+                    std.log.info("Failed to get ifaddrs", .{});
+                }
+                defer ifaddrs.freeifaddrs(res);
+
+                var cursor = res;
+                while (true) {
+                    if (cursor == null) break;
+                    var sa = @ptrCast(*align(4) std.c.sockaddr, @alignCast(4, cursor.*.ifa_addr.?));
+                    if (sa.family == std.os.AF.INET) {
+                        const listen_addr = try std.fmt.allocPrint(self.allocator, "{}", .{std.net.Address.initPosix(sa)});
+                        const listen_addr_port_sep = std.mem.lastIndexOf(u8, listen_addr, ":") orelse listen_addr.len;
+                        try self.listening_addrs.append(listen_addr[0..listen_addr_port_sep]);
+                    }
+                    cursor = cursor.*.ifa_next;
+                }
+            } else {
+                const listen_addr = try std.fmt.allocPrint(self.allocator, "{s}", .{addr_str.Address[0..port_sep]});
+                try self.listening_addrs.append(listen_addr);
+            }
+
+            log.info("Listening on {s} {s}  ", .{
+                addr_str.Address,
+                self.listening_addrs.items,
+            });
         }
 
         fn listenerCallback(listener: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_LISTENER_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
@@ -551,10 +592,22 @@ fn runListener(allocator: Allocator, ip: [:0]const u8, out_listener_multiaddr: *
     defer listener.deinit();
     const serverPeerID = try (try server.host_key.toPubKey().toPeerID()).Ed25519.toLegacyString(allocator);
     defer allocator.free(serverPeerID);
-    const listener_multiaddr_string = try std.fmt.allocPrint(allocator, "/ip4/{s}/udp/{}/quic-v1/p2p/{s}", .{ ip, listener.port.?, serverPeerID });
-    defer allocator.free(listener_multiaddr_string);
-    out_listener_multiaddr.ptr = listener_multiaddr_string.ptr;
-    out_listener_multiaddr.len = listener_multiaddr_string.len;
+
+    var listener_multiaddr_string: ?[]const u8 = null;
+    for (listener.listening_addrs.items) |addr| {
+        if (!std.mem.eql(u8, addr, "127.0.0.1")) {
+            listener_multiaddr_string = try std.fmt.allocPrint(allocator, "/ip4/{s}/udp/{}/quic-v1/p2p/{s}", .{ addr, listener.port.?, serverPeerID });
+        }
+    }
+    std.debug.assert(listener_multiaddr_string != null);
+    defer allocator.free(listener_multiaddr_string.?);
+
+    if (listener_multiaddr_string) |ma| {
+        out_listener_multiaddr.ptr = ma.ptr;
+        out_listener_multiaddr.len = ma.len;
+    } else {
+        std.debug.panic("Failed to get listener multiaddr", .{});
+    }
 
     addr_semaphore.post();
     shutdown_semaphore.wait();
@@ -584,15 +637,17 @@ pub fn main() anyerror!void {
         const FixBuf = okredis.types.FixBuf;
         const listener_addr_resp = try redis_client.send([2]FixBuf(128), .{ "BLPOP", "listenerAddr", "0" });
         const listener_addr = listener_addr_resp[1].toSlice();
+        log.info("Dialing {s}", .{listener_addr});
         var addr_semaphore = Semaphore{ .permits = 1 };
         try runDialer(allocator, &listener_addr, &addr_semaphore);
     } else {
         var shutdown_listener_sem: Semaphore = .{};
         var listener_multiaddr_semaphore: Semaphore = .{};
         var listener_multiaddr: []const u8 = undefined;
-        var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, "127.0.0.1", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+        var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, ip, &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
         listener_multiaddr_semaphore.wait();
         try redis_client.send(void, .{ "RPUSH", "listenerAddr", listener_multiaddr });
+        log.info("Sent listener multiaddr to redis", .{});
         std.time.sleep(timeout_secs * std.time.ns_per_s);
         shutdown_listener_sem.post();
         listener_thread.join();
@@ -607,7 +662,7 @@ test "ping interop" {
     var listener_multiaddr_semaphore: Semaphore = .{};
     var listener_multiaddr: []const u8 = undefined;
 
-    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, "127.0.0.1", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
     try runDialer(allocator, &listener_multiaddr, &listener_multiaddr_semaphore);
 
     shutdown_listener_sem.post();
