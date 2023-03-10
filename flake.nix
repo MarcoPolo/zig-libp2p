@@ -110,7 +110,7 @@
                 self.packages.${system}.zls
                 openssl
                 # pkgs.pkg-config
-                glibc
+                pkgs.glibc
               ]
               ++ (if pkgs.stdenv.isDarwin
               then
