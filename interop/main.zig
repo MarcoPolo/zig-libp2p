@@ -568,8 +568,13 @@ fn runDialer(allocator: Allocator, listener_multiaddr: *const []const u8, addr_s
     const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
     defer ma.deinit(allocator);
 
+    const target = if (std.mem.eql(u8, std.os.getenv("dialer_workaround") orelse "", "true"))
+        "listener" // MsQuic will always send the IP address as the SNI, which rust-libp2p isn't happy about. See: https://github.com/microsoft/msquic/issues/3493
+    else
+        ma.target;
+
     var client = try InteropRunner.init(allocator, .{
-        .target = ma.target,
+        .target = target,
         .target_port = ma.port,
         .done_semaphore = &done_semaphore,
     });

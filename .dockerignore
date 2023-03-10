@@ -1,4 +1,4 @@
 zig-cache
 zig-out
 .git
-Dockerfile
+interop/Dockerfile

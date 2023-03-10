@@ -44,4 +44,5 @@ WORKDIR /app
 # Nix.
 COPY --from=builder /tmp/nix-store-closure /nix/store
 COPY --from=builder /app/result /app
+ENV dialer_workaround=true
 CMD ["/app/bin/interop"]
