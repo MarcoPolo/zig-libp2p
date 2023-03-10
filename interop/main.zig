@@ -615,6 +615,7 @@ fn runListener(allocator: Allocator, ip: [:0]const u8, out_listener_multiaddr: *
     for (listener.listening_addrs.items) |addr| {
         if (!std.mem.eql(u8, addr, "127.0.0.1")) {
             listener_multiaddr_string = try std.fmt.allocPrint(allocator, "/ip4/{s}/udp/{}/quic-v1/p2p/{s}", .{ addr, listener.port.?, serverPeerID });
+            break;
         }
     }
     std.debug.assert(listener_multiaddr_string != null);
