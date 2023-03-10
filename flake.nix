@@ -130,6 +130,7 @@
               LIB_MSQUIC_DEBUG = "${self.packages.${system}.libmsquic-debug}";
               LIB_OPENSSL = "${openssl.dev}";
               ZIG_DEPS = "${zig-deps.depsJson}";
+              ELF_INTERPRETER = (if pkgs.stdenv.isLinux then "${pkgs.glibc}/lib/ld-linux-x86-64.so.2" else "");
             };
 
       });
