@@ -142,8 +142,28 @@ fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std
     l.linkFramework("CoreFoundation");
 }
 
+fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.Tag, step: *std.build.Step, filename: []const u8) *std.build.Step {
+    const elf_interpreter = std.os.getenv("ELF_INTERPRETER") orelse "";
+    if (os == .linux and (elf_interpreter).len > 0) {
+        const path = try std.fmt.allocPrint(allocator, "./zig-out/bin/{s}", .{filename});
+        defer allocator.free(path);
+        const patchElf = b.addSystemCommand(&[_][]const u8{
+            "patchelf",
+            "--set-interpreter",
+            elf_interpreter,
+        });
+        patchElf.step.dependOn(step);
+
+        const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
+        tests_step.dependOn(&patchElf.step);
+        return &patchElf.step;
+    } else {
+        return &step;
+    }
+}
+
 fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) !void {
-    const tests = b.addTest("src/crypto.zig");
+    const tests = b.addTestExe("crypto-tests", "src/crypto.zig");
     tests.setBuildMode(mode);
     // Handle reading zig-deps.nix output
     try addZigDeps(allocator, tests);
@@ -156,9 +176,10 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     if (os == .linux) {
         tests.linkLibC();
     }
+    const install_test = b.addInstallArtifact(tests);
 
     const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
-    tests_step.dependOn(&tests.step);
+    tests_step.dependOn(maybePatchElf(allocator, b, os, &install_test.step, tests.out_filename));
 }
 
 pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
