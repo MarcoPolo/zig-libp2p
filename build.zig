@@ -187,7 +187,7 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
     const msquic_builder = @import("./zig-msquic/build.zig");
 
     const interop = b.addExecutable("interop", "interop/main.zig");
-    const interop_test = b.addTestExe("interp-self-test", "interop/main.zig");
+    const interop_test = b.addTestExe("interop-test", "interop/main.zig");
     interop_test.filter = test_filter;
 
     // Add packages and link
@@ -236,7 +236,7 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
     const os = target.os_tag orelse builtin.os.tag;
 
     const build_test_interop_step = b.step("interop-test", "Build interop self test");
-    build_test_interop_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(interop_test).step, interop.out_filename));
+    build_test_interop_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(interop_test).step, interop_test.out_filename));
 
     const run_test_interop_step = b.step("run-interop-test", "Run interop self test");
     run_test_interop_step.dependOn(&interop_test.run().step);
