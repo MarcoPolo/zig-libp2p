@@ -23,9 +23,9 @@ COPY zig-deps.nix ./
 
 
 # Push to cachix if we have an auth token
-RUN [[ -n $CACHIX_AUTH_TOKEN ]] && nix develop --profile dev-profile
-RUN [[ -n $CACHIX_AUTH_TOKEN ]] && cachix authtoken $CACHIX_AUTH_TOKEN
-RUN [[ -n $CACHIX_AUTH_TOKEN ]] && cachix push zig-libp2p dev-profile
+RUN if [ -n "$CACHIX_AUTH_TOKEN" ] ; then nix develop --profile dev-profile ; fi
+RUN if [ -n "$CACHIX_AUTH_TOKEN" ] ; then cachix authtoken $CACHIX_AUTH_TOKEN ; fi
+RUN if [ -n "$CACHIX_AUTH_TOKEN" ] ; then cachix push zig-libp2p dev-profile ; fi
 
 COPY . .
 RUN nix build '.#interop'
