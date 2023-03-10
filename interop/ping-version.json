@@ -1,0 +1,9 @@
+{
+    "id": "zig-libp2p-head",
+    "containerImageID": "zig-libp2p-head",
+    "transports": [
+        "quic-v1"
+    ],
+    "secureChannels": [],
+    "muxers": []
+}
