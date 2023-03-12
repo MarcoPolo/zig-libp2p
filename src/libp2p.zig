@@ -6,6 +6,7 @@ pub const util = struct {
 
 pub const protocols = struct {
     pub const Ping = @import("./protocols/ping.zig");
+    pub const Perf = @import("./protocols/perf.zig");
     pub const MSS = @import("./protocols/multistream_select.zig");
 };
 

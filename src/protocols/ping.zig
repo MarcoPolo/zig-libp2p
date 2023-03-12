@@ -12,6 +12,7 @@ const random = rng.random();
 pub const id = "/ipfs/ping/1.0.0";
 
 pub const Event = union(enum) {
+    // TODO, we can remove this
     ready: void,
     ping_response_received: u64, // Duration
 };
@@ -78,6 +79,7 @@ pub const Handler = struct {
             if (QuicStatus.isError(status)) {
                 return status;
             }
+            // todo clean this up
             if (self.multistream_select.isDone()) {
                 log.debug("Ping protocol negotiated", .{});
             }
