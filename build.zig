@@ -155,8 +155,6 @@ fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.
         });
         patchElf.step.dependOn(step);
 
-        const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
-        tests_step.dependOn(&patchElf.step);
         return &patchElf.step;
     } else {
         return step;
@@ -181,6 +179,36 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
 
     const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
     tests_step.dependOn(try maybePatchElf(allocator, b, os, &install_test.step, tests.out_filename));
+}
+
+pub fn buildTests(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
+    const msquic_builder = @import("./zig-msquic/build.zig");
+
+    const libp2p_test = b.addTestExe("libp2p-tests", "src/libp2p.zig");
+    libp2p_test.filter = test_filter;
+
+    // Add packages and link
+    inline for (.{libp2p_test}) |step| {
+        try msquic_builder.linkMsquic(allocator, target, step, true);
+        try includeLibSystemFromNix(allocator, step);
+
+        step.addPackage(std.build.Pkg{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        });
+
+        step.setBuildMode(mode);
+    }
+
+    const os = target.os_tag orelse builtin.os.tag;
+
+    const build_libp2p_test_step = b.step("libp2p-tests", "Build libp2p tests");
+    build_libp2p_test_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(libp2p_test).step, libp2p_test.out_filename));
+
+    const run_test_interop_step = b.step("run-libp2p-tests", "Run libp2ptests");
+    run_test_interop_step.dependOn(&libp2p_test.run().step);
 }
 
 pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
@@ -263,4 +291,5 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     try addCryptoTestStep(allocator, b, mode, target, test_filter);
     try buildInterop(b, allocator, mode, target, test_filter);
+    try buildTests(b, allocator, mode, target, test_filter);
 }
