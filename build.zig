@@ -195,9 +195,17 @@ pub fn buildTests(b: *std.build.Builder, allocator: Allocator, mode: std.builtin
         step.addPackage(std.build.Pkg{
             .name = "msquic",
             .source = .{
-                .path = "zig-msquic/src/msquic_wrapper.zig",
+                .path = "zig-msquic/src/msquic.zig",
             },
         });
+        step.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
+            .path = "src/msquic.zig",
+        }, .dependencies = &[_]std.build.Pkg{.{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        }} });
 
         step.setBuildMode(mode);
     }

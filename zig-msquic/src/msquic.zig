@@ -1,5 +1,19 @@
 const std = @import("std");
+const wrapper = @import("msquic_wrapper.zig");
 pub usingnamespace @import("msquic_wrapper.zig");
+
+pub fn HandleEventWrapper(comptime StreamContext: type, comptime handleEvent: fn (*StreamContext, s: wrapper.HQUIC, [*c]wrapper.QUIC_STREAM_EVENT) wrapper.QuicStatus.EventHandlerError!wrapper.QuicStatus.EventHandlerStatus) type {
+    return struct {
+        pub fn streamCallback(stream: wrapper.HQUIC, self_ptr: ?*anyopaque, event: [*c]wrapper.struct_QUIC_STREAM_EVENT) callconv(.C) c_uint {
+            const self = @ptrCast(*StreamContext, @alignCast(@alignOf(StreamContext), self_ptr));
+            const status = handleEvent(self, stream, event) catch |err| {
+                return wrapper.QuicStatus.EventHandlerErrorToUint(err);
+            };
+
+            return @enumToInt(status);
+        }
+    };
+}
 
 test {
     _ = @import("./perf/throughput_client.zig");

@@ -48,6 +48,13 @@ pub const Handler = struct {
             .multistream_select = MultistreamSelect.init(allocator, msquic, &[_][]const u8{id}, is_initiator, initialized_quic_buffer_pool),
             .state = .negotiating_multistream,
         };
+
+        // TODO this is needed because if we aren't the initiator we are presumably already done with this.
+        // It doesn't make sense for each protocol to have to deal with this.
+        if (!is_initiator) {
+            ping.multistream_select.state = .done;
+            ping.multistream_select.negotiated_protocol = id;
+        }
         return ping;
     }
 

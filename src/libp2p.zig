@@ -18,3 +18,7 @@ pub const alpn = MsQuic.QUIC_BUFFER{
     .Length = @sizeOf(@TypeOf(libp2p_proto_name)) - 1,
     .Buffer = @ptrCast([*c]u8, libp2p_proto_name[0..]),
 };
+
+test {
+    _ = util.testutil;
+}
