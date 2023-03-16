@@ -20,3 +20,7 @@ jobs:
         with:
           test-filter: zig-libp2p-head
           extra-versions: ${{ github.workspace }}/interop/ping-version.json
+          s3-cache-is-read-only: true
+          s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
+          s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID_READ_ONLY }}
+          s3-secret-access-key: ${{ secrets.S3_LIBP2P_BUILD_CACHE_AWS_SECRET_ACCESS_KEY_READ_ONLY }}
