@@ -52,6 +52,7 @@ pub const Handler = struct {
         // TODO this is needed because if we aren't the initiator we are presumably already done with this.
         // It doesn't make sense for each protocol to have to deal with this.
         if (!is_initiator) {
+            ping.state = .ready;
             ping.multistream_select.state = .done;
             ping.multistream_select.negotiated_protocol = id;
         }

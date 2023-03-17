@@ -23,14 +23,28 @@ const ifaddrs = @cImport({
 
 const stdout = std.io.getStdOut();
 
+const TestEnv = struct {
+    done_semaphore: Semaphore = Semaphore{},
+};
+
 pub fn TestNode(
     comptime StreamContext: type,
-    comptime InitStreamContextFn: fn (allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, stream: MsQuic.HQUIC, protocol: []const u8, is_initiator: bool, quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) error{OutOfMemory}!StreamContext,
+    comptime InitStreamContextFn: fn (
+        allocator: Allocator,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        stream: MsQuic.HQUIC,
+        protocol: []const u8,
+        is_initiator: bool,
+        quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        test_env: *TestEnv,
+    ) error{OutOfMemory}!StreamContext,
 ) type {
     return struct {
         const Self = @This();
 
         allocator: Allocator,
+
+        test_env: TestEnv = .{},
 
         host_key: crypto.OpenSSLKey.ED25519KeyPair,
         msquic: *MsQuic.QUIC_API_TABLE,
@@ -133,7 +147,15 @@ pub fn TestNode(
             errdefer self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 
             var stream_context = try self.allocator.create(StreamContext);
-            stream_context.* = try InitStreamContextFn(self.allocator, self.msquic, undefined, dial_settings.proto, true, &self.quic_buffer_pool);
+            stream_context.* = try InitStreamContextFn(
+                self.allocator,
+                self.msquic,
+                undefined,
+                dial_settings.proto,
+                true,
+                &self.quic_buffer_pool,
+                &self.test_env,
+            );
             errdefer {
                 stream_context.deinit();
                 self.allocator.destroy(stream_context);
@@ -340,7 +362,7 @@ pub fn TestNode(
                         var stream_context = self.allocator.create(InboundStreamContext) catch {
                             return QuicStatus.OutOfMemory;
                         };
-                        stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, self.quic_buffer_pool, self.app.supported_protos);
+                        stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, self.quic_buffer_pool, self.app.supported_protos, self.app);
                         const stream_handle = event.*.unnamed_0.PEER_STREAM_STARTED.Stream;
 
                         self.msquic.SetCallbackHandler.?(
@@ -375,18 +397,26 @@ pub fn TestNode(
             allocator: Allocator,
             msquic: *MsQuic.QUIC_API_TABLE,
             quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+            app: *Self,
             const State = enum {
                 ready,
                 negotiating_multistream,
                 failed_multistream,
             };
 
-            pub fn init(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER), supported_protos: [][]const u8) @This() {
+            pub fn init(
+                allocator: Allocator,
+                msquic: *MsQuic.QUIC_API_TABLE,
+                quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+                supported_protos: [][]const u8,
+                app: *Self,
+            ) @This() {
                 return @This(){
                     .allocator = allocator,
                     .msquic = msquic,
                     .mss = MultistreamSelect.init(allocator, msquic, supported_protos, false, quic_buffer_pool),
                     .quic_buffer_pool = quic_buffer_pool,
+                    .app = app,
                 };
             }
 
@@ -411,7 +441,15 @@ pub fn TestNode(
                         defer self.deinit();
 
                         log.debug("Negotiated protocol on inbound stream: {s}", .{proto});
-                        app_stream_context.* = InitStreamContextFn(self.allocator, self.msquic, stream, proto, false, self.quic_buffer_pool) catch {
+                        app_stream_context.* = InitStreamContextFn(
+                            self.allocator,
+                            self.msquic,
+                            stream,
+                            proto,
+                            false,
+                            self.quic_buffer_pool,
+                            &self.app.test_env,
+                        ) catch {
                             return QuicStatus.OutOfMemory;
                         };
 
@@ -456,7 +494,7 @@ pub fn TestNode(
                     var stream_context = self.allocator.create(InboundStreamContext) catch {
                         return QuicStatus.OutOfMemory;
                     };
-                    stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, &self.quic_buffer_pool, self.supported_protos);
+                    stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, &self.quic_buffer_pool, self.supported_protos, self);
                     const stream_handle = event.*.unnamed_0.PEER_STREAM_STARTED.Stream;
 
                     self.msquic.SetCallbackHandler.?(
@@ -487,7 +525,6 @@ pub fn TestNode(
 }
 
 fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
-    var done_semaphore = Semaphore{};
     addr_semaphore.wait();
 
     const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
@@ -503,7 +540,7 @@ fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][
     });
     defer client.msquic.ConnectionShutdown.?(stream_and_conn.conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
     // Wait for done
-    done_semaphore.wait();
+    client.test_env.done_semaphore.wait();
     log.info("Shutting down", .{});
 }
 
@@ -535,19 +572,32 @@ fn runListener(allocator: Allocator, comptime Node: anytype, supported_protos: [
 
 const Ping = libp2p.protocols.Ping;
 const PingStreamContext = struct {
+    allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
     ping: Ping.Handler,
-    pub fn init(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, stream: MsQuic.HQUIC, protocol: []const u8, is_initiator: bool, quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) error{OutOfMemory}!PingStreamContext {
+    test_env: *TestEnv,
+    pub fn init(
+        allocator: Allocator,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        stream: MsQuic.HQUIC,
+        protocol: []const u8,
+        is_initiator: bool,
+        quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        test_env: *TestEnv,
+    ) error{OutOfMemory}!PingStreamContext {
         log.debug("Creating ping stream context", .{});
         std.debug.assert(std.mem.eql(u8, protocol, Ping.id));
         return .{
+            .allocator = allocator,
             .stream_handle = stream,
             .ping = Ping.Handler.init(allocator, PingStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool),
+            .test_env = test_env,
         };
     }
 
     pub fn deinit(self: *PingStreamContext) void {
-        self.ping.deinit();
+        self.allocator.destroy(self);
+        // self.ping.deinit();
     }
 
     pub fn streamStarted(self: *PingStreamContext) !void {
@@ -561,6 +611,13 @@ const PingStreamContext = struct {
 
             return QuicStatus.EventHandlerError.InternalError;
         }
+        switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                self.deinit();
+            },
+            else => {},
+        }
+
         return .Success;
     }
 
@@ -575,6 +632,8 @@ const PingStreamContext = struct {
             },
             .ping_response_received => |dur| {
                 log.info("Ping response received: {} microseconds", .{dur / 1000});
+                const self = @fieldParentPtr(PingStreamContext, "ping", handler);
+                self.test_env.done_semaphore.post();
             },
         }
         return QuicStatus.Success;
