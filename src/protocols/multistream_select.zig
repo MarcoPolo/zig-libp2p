@@ -16,6 +16,7 @@ pub const MultistreamEventType = enum {
     // We have sent all the data we need to send. We still need to receive the
     // peer's response, but we can start sending application data. If the peer doesn't speak the protocol, we will fail later.
     // Caller still needs to send events to MultistreamSelect.
+    // TODO support this.
     optimistically_negotiated,
     // We have failed to negotiate a protocol. Caller may stop sending events to MultistreamSelect.
     // TODO add error
@@ -105,7 +106,7 @@ pub fn MultistreamSelect(
                             var i: u32 = 0;
                             for (buffers.Buffers[0..buffers.BufferCount]) |buf| {
                                 in_bufs[i] = buf.Buffer[0..buf.Length];
-                                log.debug("Received: {s}", .{in_bufs[i]});
+                                log.debug("is_initiator={} Received: {s}", .{ self.is_initiator, in_bufs[i] });
                                 i += 1;
                             }
 
@@ -124,8 +125,6 @@ pub fn MultistreamSelect(
                         const sent_quic_buffer = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), ctx));
                         const sent_buf = @ptrCast(*align(8) [256]u8, @alignCast(8, sent_quic_buffer.Buffer));
                         self.msg_buffer_pool.destroy(sent_buf);
-                        // self.allocator.destroy(sent_buf);
-                        // self.allocator.destroy(sent_quic_buffer);
                         self.quic_buffer_pool.destroy(sent_quic_buffer);
                     }
 

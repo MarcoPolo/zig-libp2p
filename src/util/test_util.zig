@@ -23,12 +23,16 @@ const ifaddrs = @cImport({
 
 const stdout = std.io.getStdOut();
 
-const TestEnv = struct {
-    done_semaphore: Semaphore = Semaphore{},
-};
+pub fn TestEnv(comptime Meta: type) type {
+    return struct {
+        done_semaphore: Semaphore = Semaphore{},
+        meta: Meta = undefined,
+    };
+}
 
 pub fn TestNode(
     comptime StreamContext: type,
+    comptime TestEnvMeta: type,
     comptime InitStreamContextFn: fn (
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
@@ -36,7 +40,7 @@ pub fn TestNode(
         protocol: []const u8,
         is_initiator: bool,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-        test_env: *TestEnv,
+        test_env: *TestEnv(TestEnvMeta),
     ) error{OutOfMemory}!StreamContext,
 ) type {
     return struct {
@@ -44,7 +48,7 @@ pub fn TestNode(
 
         allocator: Allocator,
 
-        test_env: TestEnv = .{},
+        test_env: TestEnv(TestEnvMeta) = .{},
 
         host_key: crypto.OpenSSLKey.ED25519KeyPair,
         msquic: *MsQuic.QUIC_API_TABLE,
@@ -85,13 +89,15 @@ pub fn TestNode(
             var configuration: MsQuic.HQUIC = undefined;
             var settings = std.mem.zeroes(MsQuic.QuicSettings);
 
-            settings.IdleTimeoutMs = 5000;
+            settings.IdleTimeoutMs = 10000;
             settings.IsSet.flags.IdleTimeoutMs = true;
 
             // Configures the server's resumption level to allow for resumption and
             // 0-RTT.
             settings.bitfields.ServerResumptionLevel = MsQuic.QUIC_SERVER_RESUME_AND_ZERORTT;
             settings.IsSet.flags.ServerResumptionLevel = true;
+            settings.bitfields.SendBufferingEnabled = true;
+            settings.IsSet.flags.SendBufferingEnabled = true;
 
             // Configures the server's settings to allow for the peer to open a single
             // bidirectional stream. By default connections are not configured to allow
@@ -137,6 +143,44 @@ pub fn TestNode(
             conn: MsQuic.HQUIC,
             stream_context: *StreamContext,
         };
+
+        pub fn startStream(self: *@This(), conn: MsQuic.HQUIC, proto: []const u8) !*StreamContext {
+            var stream_context = try self.allocator.create(StreamContext);
+            stream_context.* = try InitStreamContextFn(
+                self.allocator,
+                self.msquic,
+                undefined,
+                proto,
+                true,
+                &self.quic_buffer_pool,
+                &self.test_env,
+            );
+            errdefer {
+                stream_context.deinit();
+                self.allocator.destroy(stream_context);
+            }
+
+            var status = self.msquic.StreamOpen.?(
+                conn,
+                MsQuic.QUIC_STREAM_OPEN_FLAG_NONE,
+                MsQuic.HandleEventWrapper(StreamContext, StreamContext.handleEvent).streamCallback,
+                stream_context,
+                &stream_context.stream_handle,
+            );
+
+            if (MsQuic.QuicStatus.isError(status)) {
+                return error.StreamOpenFailed;
+            }
+
+            status = self.msquic.StreamStart.?(stream_context.stream_handle, MsQuic.QUIC_STREAM_START_FLAG_NONE);
+            if (MsQuic.QuicStatus.isError(status)) {
+                return error.StreamStartFailed;
+            }
+
+            try stream_context.streamStarted();
+
+            return stream_context;
+        }
 
         pub fn dialAndStartStream(self: *@This(), dial_settings: DialSettings) !ConnAndStream {
             var conn: MsQuic.HQUIC = undefined;
@@ -334,7 +378,6 @@ pub fn TestNode(
                         if (QuicStatus.isError(self.msquic.ConnectionSetConfiguration.?(conn, self.app.configuration))) {
                             return QuicStatus.ConnectionRefused;
                         }
-                        log.info("New connection", .{});
                     },
                     MsQuic.QUIC_LISTENER_EVENT_STOP_COMPLETE => {
                         log.info("Listener stopped", .{});
@@ -524,7 +567,7 @@ pub fn TestNode(
     };
 }
 
-fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
+pub fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
     addr_semaphore.wait();
 
     const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
@@ -544,7 +587,7 @@ fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][
     log.info("Shutting down", .{});
 }
 
-fn runListener(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
+pub fn runListener(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
     var server = try Node.init(allocator, supported_protos);
     defer server.deinit();
     var listener = server.newListener();
@@ -575,7 +618,7 @@ const PingStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
     ping: Ping.Handler,
-    test_env: *TestEnv,
+    test_env: *TestEnv(void),
     pub fn init(
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
@@ -583,7 +626,7 @@ const PingStreamContext = struct {
         protocol: []const u8,
         is_initiator: bool,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-        test_env: *TestEnv,
+        test_env: *TestEnv(void),
     ) error{OutOfMemory}!PingStreamContext {
         log.debug("Creating ping stream context", .{});
         std.debug.assert(std.mem.eql(u8, protocol, Ping.id));
@@ -643,7 +686,7 @@ const PingStreamContext = struct {
 test "Run test node with ping" {
     std.testing.log_level = .debug;
 
-    const Node = TestNode(PingStreamContext, PingStreamContext.init);
+    const Node = TestNode(PingStreamContext, void, PingStreamContext.init);
 
     const allocator = std.testing.allocator;
 
