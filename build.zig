@@ -35,15 +35,6 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
     }
 }
 
-fn linkQuiche(l: anytype) void {
-    // TODO get this from somewhere else
-    l.addIncludePath("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
-    l.addIncludePath("/Users/marco/code/quiche/quiche/include");
-    l.addLibraryPath("/Users/marco/code/quiche/target/release");
-    l.linkSystemLibraryName("quiche");
-    l.linkLibC();
-}
-
 fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
     l.addIncludePath(vars.get("LIBSYSTEM_INCLUDE").?);
@@ -70,76 +61,6 @@ fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerr
 
     l.linkSystemLibraryName("ssl");
     l.linkSystemLibraryName("crypto");
-}
-
-fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
-    var vars = try std.process.getEnvMap(allocator);
-    // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
-    const msquic_dir = vars.get("LIB_MSQUIC").?;
-
-    l.addLibraryPath(try std.fs.path.join(allocator, &.{
-        msquic_dir,
-        "src/inc",
-    }));
-
-    const os = target.os_tag orelse builtin.os.tag;
-    const arch = target.cpu_arch orelse builtin.cpu.arch;
-
-    if (os == .linux) {
-        // l.addLibPath(vars.get("GLIBC").?);
-        // l.addLibPath(try std.fs.path.join(allocator, &.{
-        //     vars.get("GLIBC").?,
-        //     "..",
-        //     "lib64",
-        // }));
-        // l.linkSystemLibraryName("c");
-        // l.linkSystemLibrary("c");
-        l.linkLibC();
-    }
-
-    const libmsquic_os_path = switch (os) {
-        .macos => "macos",
-        .linux => "linux",
-        else => {
-            @panic("untested OS. fixme :)");
-        },
-    };
-    const arch_str = switch (arch) {
-        .aarch64 => "arm64",
-        .x86_64 => "x64",
-        else => {
-            @panic("untested arch. fixme :)");
-        },
-    };
-    // Debug to catch issues
-    // const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
-    // std.debug.print("{any}_\n", .{arch_str});
-    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
-
-    l.addLibraryPath(try std.fs.path.join(allocator, &.{
-        msquic_dir,
-        "artifacts/bin",
-        libmsquic_os_path,
-        libmsquic_arch_path,
-    }));
-
-    try linkOpenssl(allocator, l);
-    l.linkSystemLibraryName("msquic");
-
-    // Pull framework paths from Nix CFLAGS env
-    var frameworks_in_nix_cflags = std.mem.split(u8, vars.get("NIX_CFLAGS_COMPILE").?, " ");
-    var next_is_framework = false;
-    while (frameworks_in_nix_cflags.next()) |val| {
-        if (next_is_framework) {
-            // std.debug.print("nix framework paths: {s}\n", .{val});
-            l.addFrameworkPath(val);
-        }
-        next_is_framework = std.mem.eql(u8, val, "-iframework");
-    }
-
-    l.linkFramework("Security");
-    l.linkFramework("Foundation");
-    l.linkFramework("CoreFoundation");
 }
 
 fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.Tag, step: *std.build.Step, filename: []const u8) !*std.build.Step {
@@ -228,7 +149,7 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
 
     // Add packages and link
     inline for (.{ interop, interop_test }) |step| {
-        try msquic_builder.linkMsquic(allocator, target, step, true);
+        try msquic_builder.linkMsquic(allocator, target, step, false);
         try includeLibSystemFromNix(allocator, step);
 
         step.addPackage(std.build.Pkg{
