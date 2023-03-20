@@ -161,7 +161,7 @@ const InteropRunner = struct {
             std.debug.panic("Failed to parse address: {}", .{res});
         }
 
-        // We set the remote address here instead of in connection start so that we don't set the IP address.
+        // We set the remote address here instead of in connection start so that we don't set the IP address as SNI.
         const set_param_result = self.msquic.SetParam.?(
             conn,
             MsQuic.QUIC_PARAM_CONN_REMOTE_ADDRESS,

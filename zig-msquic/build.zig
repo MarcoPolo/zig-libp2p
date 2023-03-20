@@ -45,9 +45,9 @@ pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: 
 
     // Debug to catch issues
     const libmsquic_arch_path = if (releaseMode)
-        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" })
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl3" })
     else
-        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl3" });
 
     l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,

@@ -35,15 +35,6 @@ fn addZigDeps(allocator: Allocator, step: anytype) !void {
     }
 }
 
-fn linkQuiche(l: anytype) void {
-    // TODO get this from somewhere else
-    l.addIncludePath("/nix/store/brjkxprm5sw1nymsnm8q750i14rbaq2h-libSystem-11.0.0/include");
-    l.addIncludePath("/Users/marco/code/quiche/quiche/include");
-    l.addLibraryPath("/Users/marco/code/quiche/target/release");
-    l.linkSystemLibraryName("quiche");
-    l.linkLibC();
-}
-
 fn includeLibSystemFromNix(allocator: Allocator, l: anytype) anyerror!void {
     var vars = try std.process.getEnvMap(allocator);
     l.addIncludePath(vars.get("LIBSYSTEM_INCLUDE").?);
@@ -72,76 +63,6 @@ fn linkOpenssl(allocator: std.mem.Allocator, l: *std.build.LibExeObjStep) anyerr
     l.linkSystemLibraryName("crypto");
 }
 
-fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: *std.build.LibExeObjStep) anyerror!void {
-    var vars = try std.process.getEnvMap(allocator);
-    // Built with nix. See flake.nix (which sets this), and `msquic.nix` for build details.
-    const msquic_dir = vars.get("LIB_MSQUIC").?;
-
-    l.addLibraryPath(try std.fs.path.join(allocator, &.{
-        msquic_dir,
-        "src/inc",
-    }));
-
-    const os = target.os_tag orelse builtin.os.tag;
-    const arch = target.cpu_arch orelse builtin.cpu.arch;
-
-    if (os == .linux) {
-        // l.addLibPath(vars.get("GLIBC").?);
-        // l.addLibPath(try std.fs.path.join(allocator, &.{
-        //     vars.get("GLIBC").?,
-        //     "..",
-        //     "lib64",
-        // }));
-        // l.linkSystemLibraryName("c");
-        // l.linkSystemLibrary("c");
-        l.linkLibC();
-    }
-
-    const libmsquic_os_path = switch (os) {
-        .macos => "macos",
-        .linux => "linux",
-        else => {
-            @panic("untested OS. fixme :)");
-        },
-    };
-    const arch_str = switch (arch) {
-        .aarch64 => "arm64",
-        .x86_64 => "x64",
-        else => {
-            @panic("untested arch. fixme :)");
-        },
-    };
-    // Debug to catch issues
-    // const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
-    // std.debug.print("{any}_\n", .{arch_str});
-    const libmsquic_arch_path = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" });
-
-    l.addLibraryPath(try std.fs.path.join(allocator, &.{
-        msquic_dir,
-        "artifacts/bin",
-        libmsquic_os_path,
-        libmsquic_arch_path,
-    }));
-
-    try linkOpenssl(allocator, l);
-    l.linkSystemLibraryName("msquic");
-
-    // Pull framework paths from Nix CFLAGS env
-    var frameworks_in_nix_cflags = std.mem.split(u8, vars.get("NIX_CFLAGS_COMPILE").?, " ");
-    var next_is_framework = false;
-    while (frameworks_in_nix_cflags.next()) |val| {
-        if (next_is_framework) {
-            // std.debug.print("nix framework paths: {s}\n", .{val});
-            l.addFrameworkPath(val);
-        }
-        next_is_framework = std.mem.eql(u8, val, "-iframework");
-    }
-
-    l.linkFramework("Security");
-    l.linkFramework("Foundation");
-    l.linkFramework("CoreFoundation");
-}
-
 fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.Tag, step: *std.build.Step, filename: []const u8) !*std.build.Step {
     const elf_interpreter = std.os.getenv("ELF_INTERPRETER") orelse "";
     if (os == .linux and (elf_interpreter).len > 0) {
@@ -155,8 +76,6 @@ fn maybePatchElf(allocator: Allocator, b: *std.build.Builder, os: std.Target.Os.
         });
         patchElf.step.dependOn(step);
 
-        const tests_step = b.step("crypto-tests", "Run libp2p crypto tests");
-        tests_step.dependOn(&patchElf.step);
         return &patchElf.step;
     } else {
         return step;
@@ -183,6 +102,44 @@ fn addCryptoTestStep(allocator: std.mem.Allocator, b: *std.build.Builder, mode: 
     tests_step.dependOn(try maybePatchElf(allocator, b, os, &install_test.step, tests.out_filename));
 }
 
+pub fn buildTests(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
+    const msquic_builder = @import("./zig-msquic/build.zig");
+
+    const libp2p_test = b.addTestExe("libp2p-tests", "src/libp2p.zig");
+    libp2p_test.filter = test_filter;
+
+    // Add packages and link
+    inline for (.{libp2p_test}) |step| {
+        try msquic_builder.linkMsquic(allocator, target, step, true);
+        try includeLibSystemFromNix(allocator, step);
+
+        step.addPackage(std.build.Pkg{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic.zig",
+            },
+        });
+        step.addPackage(std.build.Pkg{ .name = "libp2p-msquic", .source = .{
+            .path = "src/msquic.zig",
+        }, .dependencies = &[_]std.build.Pkg{.{
+            .name = "msquic",
+            .source = .{
+                .path = "zig-msquic/src/msquic_wrapper.zig",
+            },
+        }} });
+
+        step.setBuildMode(mode);
+    }
+
+    const os = target.os_tag orelse builtin.os.tag;
+
+    const build_libp2p_test_step = b.step("libp2p-tests", "Build libp2p tests");
+    build_libp2p_test_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(libp2p_test).step, libp2p_test.out_filename));
+
+    const run_test_interop_step = b.step("run-libp2p-tests", "Run libp2ptests");
+    run_test_interop_step.dependOn(&libp2p_test.run().step);
+}
+
 pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget, test_filter: []const u8) anyerror!void {
     const msquic_builder = @import("./zig-msquic/build.zig");
 
@@ -192,7 +149,7 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
 
     // Add packages and link
     inline for (.{ interop, interop_test }) |step| {
-        try msquic_builder.linkMsquic(allocator, target, step, true);
+        try msquic_builder.linkMsquic(allocator, target, step, false);
         try includeLibSystemFromNix(allocator, step);
 
         step.addPackage(std.build.Pkg{
@@ -263,4 +220,5 @@ pub fn build(b: *std.build.Builder) anyerror!void {
 
     try addCryptoTestStep(allocator, b, mode, target, test_filter);
     try buildInterop(b, allocator, mode, target, test_filter);
+    try buildTests(b, allocator, mode, target, test_filter);
 }

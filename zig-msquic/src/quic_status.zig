@@ -34,6 +34,91 @@ pub const UserCanceled = codeAndCodeForMacOS(130, 105);
 pub const AlpnNegFailure = codeAndCodeForMacOS(92, 42);
 pub const StreamLimitReached = 86;
 
+pub const EventHandlerStatus = enum(c_uint) {
+    Success = 0,
+    Pending = @bitCast(c_uint, @as(c_int, -2)),
+    Continue = @bitCast(c_uint, @as(c_int, -1)),
+};
+
+pub const EventHandlerError = error{
+    OutOfMemory,
+    InvalidParameter,
+    InvalidState,
+    NotSupported,
+    NotFound,
+    BufferTooSmall,
+    HandshakeFailure,
+    Aborted,
+    AddressInUse,
+    InvalidAddress,
+    ConnectionTimeout,
+    ConnectionIdle,
+    InternalError,
+    ConnectionRefused,
+    ProtocolError,
+    VerNegError,
+    Unreachable,
+    TlsError,
+    UserCanceled,
+    AlpnNegFailure,
+    StreamLimitReached,
+};
+
+pub fn EventHandlerErrorToUint(err: EventHandlerError) c_uint {
+    return switch (err) {
+        EventHandlerError.OutOfMemory => 12,
+        EventHandlerError.InvalidParameter => 22,
+        EventHandlerError.InvalidState => 1,
+        EventHandlerError.NotSupported => codeAndCodeForMacOS(95, 102),
+        EventHandlerError.NotFound => 2,
+        EventHandlerError.BufferTooSmall => codeAndCodeForMacOS(75, 84),
+        EventHandlerError.HandshakeFailure => codeAndCodeForMacOS(103, 53),
+        EventHandlerError.Aborted => codeAndCodeForMacOS(125, 89),
+        EventHandlerError.AddressInUse => codeAndCodeForMacOS(98, 48),
+        EventHandlerError.InvalidAddress => codeAndCodeForMacOS(97, 47),
+        EventHandlerError.ConnectionTimeout => codeAndCodeForMacOS(110, 60),
+        EventHandlerError.ConnectionIdle => codeAndCodeForMacOS(62, 101),
+        EventHandlerError.InternalError => 5,
+        EventHandlerError.ConnectionRefused => codeAndCodeForMacOS(111, 61),
+        EventHandlerError.ProtocolError => codeAndCodeForMacOS(71, 100),
+        EventHandlerError.VerNegError => codeAndCodeForMacOS(93, 43),
+        EventHandlerError.Unreachable => codeAndCodeForMacOS(113, 65),
+        EventHandlerError.TlsError => 126,
+        EventHandlerError.UserCanceled => codeAndCodeForMacOS(130, 105),
+        EventHandlerError.AlpnNegFailure => codeAndCodeForMacOS(92, 42),
+        EventHandlerError.StreamLimitReached => 86,
+    };
+}
+
+pub fn UintToEventHandlerError(err: c_uint) EventHandlerError {
+    return switch (err) {
+        12 => EventHandlerError.OutOfMemory,
+        22 => EventHandlerError.InvalidParameter,
+        1 => EventHandlerError.InvalidState,
+        codeAndCodeForMacOS(95, 102) => EventHandlerError.NotSupported,
+        2 => EventHandlerError.NotFound,
+        codeAndCodeForMacOS(75, 84) => EventHandlerError.BufferTooSmall,
+        codeAndCodeForMacOS(103, 53) => EventHandlerError.HandshakeFailure,
+        codeAndCodeForMacOS(125, 89) => EventHandlerError.Aborted,
+        codeAndCodeForMacOS(98, 48) => EventHandlerError.AddressInUse,
+        codeAndCodeForMacOS(97, 47) => EventHandlerError.InvalidAddress,
+        codeAndCodeForMacOS(110, 60) => EventHandlerError.ConnectionTimeout,
+        codeAndCodeForMacOS(62, 101) => EventHandlerError.ConnectionIdle,
+        5 => EventHandlerError.InternalError,
+        codeAndCodeForMacOS(111, 61) => EventHandlerError.ConnectionRefused,
+        codeAndCodeForMacOS(71, 100) => EventHandlerError.ProtocolError,
+        codeAndCodeForMacOS(93, 43) => EventHandlerError.VerNegError,
+        codeAndCodeForMacOS(113, 65) => EventHandlerError.Unreachable,
+        126 => EventHandlerError.TlsError,
+        codeAndCodeForMacOS(130, 105) => EventHandlerError.UserCanceled,
+        codeAndCodeForMacOS(92, 42) => EventHandlerError.AlpnNegFailure,
+        86 => EventHandlerError.StreamLimitReached,
+        else => {
+            @panic("Invalid error code");
+        },
+    };
+}
+
 fn tlsAlert(alert: c_uint) c_uint {
     return (0xff & alert) + TLS_ERROR_BASE;
 } //       ((QUIC_STATUS)(0xff & Alert) + TLS_ERROR_BASE)

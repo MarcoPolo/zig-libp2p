@@ -3,7 +3,7 @@ const b58 = @import("./multibase/b58.zig");
 
 /// This is not a proper multiaddr implementation.
 const MultiAddr = struct {
-    target: [:0]u8,
+    target: [:0]const u8,
     port: u16,
     peerID: []const u8,
 
@@ -64,12 +64,14 @@ pub fn decodeMultiaddr(allocator: std.mem.Allocator, multiaddr: []const u8) !Mul
 
 test "decode simple multiaddrs" {
     const testcases = .{
-        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
-        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 1, 2, 3, 4 }, .port = 1234 } },
-        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", MultiAddr{ .target = [4]u8{ 4, 3, 2, 1 }, .port = 4321 } },
+        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 1, 2, 3, 4 }, .port = 1234, .peerID = undefined } },
+        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 1, 2, 3, 4 }, .port = 1234, .peerID = undefined } },
+        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 4, 3, 2, 1 }, .port = 4321, .peerID = undefined } },
     };
+    const allocator = std.testing.allocator;
     inline for (testcases) |tc| {
-        const ipPort = try decodeMultiaddr(tc[0]);
+        const ipPort = try decodeMultiaddr(allocator, tc[0]);
         try std.testing.expectEqual(tc[1], ipPort);
+        allocator.free(ipPort.target);
     }
 }

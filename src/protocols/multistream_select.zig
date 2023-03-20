@@ -1,11 +1,10 @@
 const std = @import("std");
-const TailQueue = std.TailQueue;
+const debug = std.debug;
 const log = std.log;
 const Allocator = std.mem.Allocator;
 const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
-const assert = std.debug.assert;
 
 const multistream_protocol_id_with_newline = "/multistream/1.0.0\n";
 const na_with_newline = "na\n";
@@ -24,579 +23,578 @@ pub const MultistreamEventType = enum {
 
 pub const MultistreamEvent = union(MultistreamEventType) {
     negotiated: []const u8,
-    optimistically_negotiated: void,
-    failed: MultistreamStateMachine.MSSError,
+    optimistically_negotiated: []const u8,
+    failed: void,
 };
 
-pub fn MultistreamSelect(
-    comptime Context: type,
-    comptime mssEventHandler: fn (context: Context, stream: MsQuic.HQUIC, event: MultistreamEvent) c_uint,
-) type {
+pub const EventHandler = *const fn (handler: *Handler, stream: MsQuic.HQUIC, event: MultistreamEvent) void;
+
+fn layoutExpectedBuf() [1024]u8 {
+    comptime var buf: [1024]u8 = [_]u8{0} ** 1024;
+    std.mem.copy(u8, buf[0..multistream_protocol_id_with_newline.len], multistream_protocol_id_with_newline[0..multistream_protocol_id_with_newline.len]);
+    return buf;
+}
+
+pub const Handler = struct {
+    recv_buf: [1024]u8 = [_]u8{0} ** 1024,
+    recv_buf_end_idx: u32 = 0,
+
+    expected_buf: [1024]u8 = layoutExpectedBuf(),
+    expected_len: u16 = 0,
+    pending_sends: u16 = 0,
+
+    quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+
+    is_initiator: bool,
+
+    state: State = .ready,
+
+    supported_protos: [][]const u8,
+    negotiated_proto: ?[]const u8 = null,
+
+    got_back_ms: bool = false,
+
+    msquic: *MsQuic.QUIC_API_TABLE,
+
+    eventHandler: EventHandler,
+    stream_handle: MsQuic.HQUIC,
+
+    const State = enum {
+        ready,
+        optimistically_negotiated,
+        failed,
+        done,
+    };
+
+    pub fn init(
+        allocator: Allocator,
+        eventHandler: EventHandler,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        stream_handle: MsQuic.HQUIC,
+        is_initiator: bool,
+        supported_protos: [][]const u8,
+        initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+    ) Handler {
+        _ = allocator;
+        return Handler{
+            .eventHandler = eventHandler,
+            .msquic = msquic,
+            .quic_buffer_pool = initialized_quic_buffer_pool,
+            .supported_protos = supported_protos,
+            .is_initiator = is_initiator,
+            .stream_handle = stream_handle,
+        };
+    }
+
+    pub fn deinit(self: *Handler) void {
+        _ = self;
+    }
+
+    fn delayedSend(self: *Handler, stream: MsQuic.HQUIC, buf: []const u8) !c_uint {
+        self.pending_sends += 1;
+        const quic_buf_to_send = try self.quic_buffer_pool.create();
+        // Hack to drop the const. QUIC_BUFFER/MsQuic won't modify the buffer.
+        var buf_ptr = @intToPtr([*c]u8, @ptrToInt(buf.ptr));
+        quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
+            .Length = @intCast(u32, buf.len),
+            .Buffer = buf_ptr,
+        };
+
+        const send_status = self.msquic.StreamSend.?(
+            stream,
+            quic_buf_to_send,
+            1,
+            MsQuic.QUIC_SEND_FLAG_DELAY_SEND,
+            quic_buf_to_send,
+        );
+        return send_status;
+    }
+
+    pub fn initiateMSS(self: *Handler, stream: MsQuic.HQUIC, proto: []const u8) !void {
+        self.negotiated_proto = proto;
+        var send_status = try self.delayedSend(stream, multistream_protocol_id_with_newline);
+        log.debug("Sent first MSS message initiator={} status={}", .{ self.is_initiator, send_status });
+        send_status = try self.delayedSend(stream, proto);
+        log.debug("Sent proto MSS message initiator={} status={}", .{ self.is_initiator, send_status });
+        send_status = try self.delayedSend(stream, "\n");
+        log.debug("Sent proto MSS newline message initiator={} status={}", .{ self.is_initiator, send_status });
+
+        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len..], proto);
+        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len + proto.len ..], "\n");
+        self.expected_len = @intCast(u16, multistream_protocol_id_with_newline.len + proto.len + 1);
+
+        self.state = .optimistically_negotiated;
+        self.eventHandler(self, stream, .{ .optimistically_negotiated = proto });
+    }
+
+    pub fn handleEvent(self: *Handler, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
+        if (self.state == .done or self.state == .failed) {
+            return .Success;
+        }
+
+        switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
+                var consumed_bytes: u64 = 0;
+                if (self.is_initiator) {
+                    // fast path, we have all the data in the first buffer
+                    if (event.*.unnamed_0.RECEIVE.TotalBufferLength > 0 and event.*.unnamed_0.RECEIVE.Buffers[0].Length >= self.expected_len) {
+                        var buf = event.*.unnamed_0.RECEIVE.Buffers[0];
+                        if (std.mem.eql(u8, self.expected_buf[0..self.expected_len], buf.Buffer[0..self.expected_len])) {
+                            consumed_bytes += self.expected_len;
+
+                            self.state = .done;
+                            self.eventHandler(self, stream, .{ .negotiated = self.negotiated_proto.? });
+
+                            if (consumed_bytes < event.*.unnamed_0.RECEIVE.TotalBufferLength) {
+                                event.*.unnamed_0.RECEIVE.TotalBufferLength = consumed_bytes;
+                                return .Continue;
+                            }
+                            return .Success;
+                        }
+                    }
+
+                    // Check that the message matches the expected proto
+                    const quic_buffers: []const MsQuic.QUIC_BUFFER = event.*.unnamed_0.RECEIVE.Buffers[0..event.*.unnamed_0.RECEIVE.BufferCount];
+
+                    std.debug.assert(self.expected_len >= self.recv_buf_end_idx);
+                    for (quic_buffers) |quic_buf| {
+                        const space_avail: u32 = self.expected_len - self.recv_buf_end_idx;
+                        if (space_avail == 0) {
+                            break;
+                        }
+                        const buf = quic_buf.Buffer[0..quic_buf.Length];
+
+                        const amount_to_copy = std.math.min(space_avail, buf.len);
+                        std.mem.copy(u8, self.recv_buf[self.recv_buf_end_idx..], buf[0..amount_to_copy]);
+                        self.recv_buf_end_idx += amount_to_copy;
+                        consumed_bytes += amount_to_copy;
+                    }
+
+                    if (self.expected_len != self.recv_buf_end_idx) {
+                        log.debug("Didn't get the full MSS message. Missing {} bytes. {s}", .{ self.expected_len - self.recv_buf_end_idx, self.expected_buf[self.recv_buf_end_idx..self.expected_len] });
+                        if (consumed_bytes < event.*.unnamed_0.RECEIVE.TotalBufferLength) {
+                            event.*.unnamed_0.RECEIVE.TotalBufferLength = consumed_bytes;
+                            return .Continue;
+                        }
+                        return .Success;
+                    }
+
+                    if (std.mem.eql(u8, self.expected_buf[0..self.expected_len], self.recv_buf[0..self.recv_buf_end_idx])) {
+                        self.state = .done;
+                        self.eventHandler(self, stream, .{ .negotiated = self.negotiated_proto.? });
+
+                        if (consumed_bytes < event.*.unnamed_0.RECEIVE.TotalBufferLength) {
+                            event.*.unnamed_0.RECEIVE.TotalBufferLength = consumed_bytes;
+                            return .Continue;
+                        }
+                        return .Success;
+                    } else {
+                        log.err("MSS message didn't match expected proto. {s}", .{self.expected_buf[0..self.expected_len]});
+                        self.state = .failed;
+                        self.eventHandler(self, stream, .{ .failed = {} });
+                        return .Success;
+                    }
+                } else {
+                    // We aren't the initiator, so we need to see what proto we are going to use
+
+                    const quic_buffers: []const MsQuic.QUIC_BUFFER = event.*.unnamed_0.RECEIVE.Buffers[0..event.*.unnamed_0.RECEIVE.BufferCount];
+
+                    // Consume until we reach the second newline
+                    for (quic_buffers) |*quic_buf| {
+                        var buf = quic_buf.Buffer[0..quic_buf.Length];
+
+                        const space_avail: u32 = @as(u32, self.recv_buf.len) - self.recv_buf_end_idx;
+                        if (space_avail == 0) {
+                            break;
+                        }
+
+                        if (!self.got_back_ms) {
+                            if (std.mem.indexOf(u8, buf, "\n")) |idx_of_newline| {
+                                const slice = buf[0 .. idx_of_newline + 1];
+                                if (slice.len + self.recv_buf_end_idx > multistream_protocol_id_with_newline.len) {
+                                    self.state = .failed;
+                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, slice });
+                                    self.eventHandler(self, stream, .{ .failed = {} });
+                                    // TODO close?
+                                    return QuicStatus.EventHandlerError.InternalError;
+                                }
+
+                                std.mem.copy(u8, self.recv_buf[self.recv_buf_end_idx..], slice);
+                                self.recv_buf_end_idx += @intCast(u32, slice.len);
+                                consumed_bytes += slice.len;
+
+                                if (std.mem.eql(u8, self.recv_buf[0..self.recv_buf_end_idx], multistream_protocol_id_with_newline)) {
+                                    buf = buf[slice.len..];
+                                    log.debug("Got back the multistream protocol id: initiator={}", .{self.is_initiator});
+                                    self.got_back_ms = true;
+                                } else {
+                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, self.recv_buf[0..self.recv_buf_end_idx] });
+                                    self.eventHandler(self, stream, .{ .failed = {} });
+                                    // TODO close?
+                                    return QuicStatus.EventHandlerError.InternalError;
+                                }
+                            } else {
+                                // Copy the whole buffer
+                                if (buf.len > multistream_protocol_id_with_newline.len) {
+                                    self.state = .failed;
+                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, buf });
+                                    self.eventHandler(self, stream, .{ .failed = {} });
+                                    // TODO close?
+                                    return QuicStatus.EventHandlerError.InternalError;
+                                }
+                                std.mem.copy(u8, self.recv_buf[self.recv_buf_end_idx..], buf);
+                                self.recv_buf_end_idx += @intCast(u32, buf.len);
+                                consumed_bytes += buf.len;
+                                log.debug("Still missing multistream protocol id: initiator={} sofar={s}", .{ self.is_initiator, self.recv_buf[0..self.recv_buf_end_idx] });
+                                continue;
+                            }
+                        }
+
+                        debug.assert(self.got_back_ms);
+
+                        if (std.mem.indexOf(u8, buf, "\n")) |idx_of_newline| {
+                            const slice = buf[0 .. idx_of_newline + 1];
+                            if (slice.len > space_avail) {
+                                self.state = .failed;
+                                log.debug("Got back too much in mss: initiator={}", .{self.is_initiator});
+                                self.eventHandler(self, stream, .{ .failed = {} });
+                                // TODO close?
+                                return QuicStatus.EventHandlerError.InternalError;
+                            }
+                            std.mem.copy(u8, self.recv_buf[self.recv_buf_end_idx..], slice);
+                            self.recv_buf_end_idx += @intCast(u32, slice.len);
+                            consumed_bytes += @intCast(u32, slice.len);
+
+                            const requested_proto = self.recv_buf[multistream_protocol_id_with_newline.len .. self.recv_buf_end_idx - 1];
+                            log.debug("initiator requests proto={s}", .{requested_proto});
+                            for (self.supported_protos) |proto| {
+                                if (std.mem.eql(u8, requested_proto, proto)) {
+                                    self.negotiated_proto = proto;
+                                    break;
+                                }
+                            }
+                            if (self.negotiated_proto != null) {
+                                log.debug("initiator requests proto={s} and we support it", .{requested_proto});
+                                break;
+                            } else {
+                                log.debug("initiator requests proto={s} and we don't support it", .{requested_proto});
+                                self.state = .failed;
+                                self.eventHandler(self, stream, .{ .failed = {} });
+                                // TODO close?
+                                return QuicStatus.EventHandlerError.InternalError;
+                            }
+                        } else {
+                            // Copy the whole buffer
+                            if (buf.len > space_avail) {
+                                self.state = .failed;
+                                log.debug("Missing protocol id in MSS: initiator={} {s}", .{ self.is_initiator, buf });
+                                self.eventHandler(self, stream, .{ .failed = {} });
+                                // TODO close?
+                                return QuicStatus.EventHandlerError.InternalError;
+                            }
+                            std.mem.copy(u8, self.recv_buf[self.recv_buf_end_idx..], buf);
+                            self.recv_buf_end_idx += @intCast(u32, buf.len);
+                            consumed_bytes += buf.len;
+                            log.debug("Still missing multistream protocol id: initiator={} sofar={s}", .{ self.is_initiator, self.recv_buf[0..self.recv_buf_end_idx] });
+                        }
+                    }
+
+                    if (self.negotiated_proto) |negotiated_proto| {
+                        log.debug("Negotiated protocol: initiator={} {s}", .{ self.is_initiator, negotiated_proto });
+                        self.state = .optimistically_negotiated; // Optimistic because we haven't finished our send yet.
+                        self.eventHandler(self, stream, .{ .negotiated = negotiated_proto });
+                        _ = delayedSend(self, stream, multistream_protocol_id_with_newline) catch {
+                            self.state = .failed;
+                            self.eventHandler(self, stream, .{ .failed = {} });
+                            log.debug("Out of memory initiator={}", .{self.is_initiator});
+                            return QuicStatus.EventHandlerError.OutOfMemory;
+                        };
+                        _ = delayedSend(self, stream, negotiated_proto) catch {
+                            self.state = .failed;
+                            self.eventHandler(self, stream, .{ .failed = {} });
+                            log.debug("Out of memory initiator={}", .{self.is_initiator});
+                            return QuicStatus.EventHandlerError.OutOfMemory;
+                        };
+                        _ = delayedSend(self, stream, "\n") catch {
+                            self.state = .failed;
+                            self.eventHandler(self, stream, .{ .failed = {} });
+                            log.debug("Out of memory initiator={}", .{self.is_initiator});
+                            return QuicStatus.EventHandlerError.OutOfMemory;
+                        };
+                    }
+                }
+
+                if (consumed_bytes < event.*.unnamed_0.RECEIVE.TotalBufferLength) {
+                    event.*.unnamed_0.RECEIVE.TotalBufferLength = consumed_bytes;
+                    return .Continue;
+                }
+                return .Success;
+            },
+            MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
+                if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |ctx| {
+                    const sent_quic_buffer = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), ctx));
+                    self.quic_buffer_pool.destroy(sent_quic_buffer);
+                    self.pending_sends -= 1;
+                    log.debug("initiator={} pending sends={}", .{ self.is_initiator, self.pending_sends });
+                    if (!self.is_initiator and self.state == .optimistically_negotiated and self.pending_sends == 0) {
+                        self.state = .done;
+                    }
+                }
+            },
+            MsQuic.QUIC_STREAM_EVENT_PEER_SEND_ABORTED => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_PEER_SEND_ABORTED", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE", .{self.is_initiator});
+            },
+            MsQuic.QUIC_STREAM_EVENT_PEER_ACCEPTED => {
+                log.debug("initiator={} QUIC_STREAM_EVENT_PEER_ACCEPTED", .{self.is_initiator});
+            },
+            else => {},
+        }
+        return .Success;
+    }
+};
+
+const TestEnv = @import("../util/test_util.zig").TestEnv(TestMeta);
+const TestMSSStreamContext = struct {
+    allocator: Allocator,
+    stream_handle: MsQuic.HQUIC,
+    mss: Handler,
+    test_env: *TestEnv,
+    msquic: *MsQuic.QUIC_API_TABLE,
+    is_initiator: bool,
+    pub fn init(
+        allocator: Allocator,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        stream: MsQuic.HQUIC,
+        _: []const u8,
+        is_initiator: bool,
+        quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        test_env: *TestEnv,
+    ) error{OutOfMemory}!TestMSSStreamContext {
+        var protos = [_][]const u8{"test"};
+        return .{
+            .allocator = allocator,
+            .stream_handle = stream,
+            .mss = Handler.init(
+                allocator,
+                TestMSSStreamContext.handleMSSEvent,
+                msquic,
+                stream,
+                is_initiator,
+                &protos,
+                quic_buffer_pool,
+            ),
+            .is_initiator = is_initiator,
+            .test_env = test_env,
+            .msquic = msquic,
+        };
+    }
+
+    pub fn deinit(self: *TestMSSStreamContext) void {
+        self.mss.deinit();
+        _ = self.msquic.StreamClose.?(self.stream_handle);
+        self.allocator.destroy(self);
+    }
+
+    pub fn streamStarted(self: *TestMSSStreamContext, stream_handle: MsQuic.HQUIC) !void {
+        if (self.is_initiator) {
+            try self.mss.initiateMSS(stream_handle, "test");
+        }
+    }
+
+    pub fn handleEvent(self: *TestMSSStreamContext, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
+        _ = try self.mss.handleEvent(stream, event);
+
+        switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                self.deinit();
+            },
+            else => {},
+        }
+
+        return .Success;
+    }
+
+    pub fn handleMSSEvent(handler: *Handler, _: MsQuic.HQUIC, event: MultistreamEvent) void {
+        log.debug("initiator={} handleMSSEvent: {any}", .{ handler.is_initiator, event });
+        switch (event) {
+            .negotiated => {
+                const self = @fieldParentPtr(TestMSSStreamContext, "mss", handler);
+                self.test_env.done_semaphore.post();
+            },
+            else => {},
+        }
+    }
+};
+
+// Wraps a Handler with Multistream select. Calls the wrapped handler's .streamStarted(stream_handle, proto) method when ready.
+pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
     return struct {
         const Self = @This();
+        mss: Handler,
+        wrapped: WrappedHandler,
 
-        quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-        msg_buffer_pool: MemoryPool([256]u8),
-        supported_protocols: []const []const u8,
-
-        msquic: *MsQuic.QUIC_API_TABLE,
-        state: State = .negotiating,
-        mss_state: MultistreamStateMachine,
-        negotiated_protocol: ?[]const u8 = null,
-        is_initiator: bool = false,
-        allocator: Allocator,
-
-        context: Context = undefined,
-
-        const State = enum { negotiating, optimisticallyDone, done, failed };
-
-        pub fn init(allocator: Allocator, msquic: *MsQuic.QUIC_API_TABLE, supported_protocols: []const []const u8, is_initiator: bool, initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) Self {
-            var supported_protos = allocator.alloc([]const u8, supported_protocols.len) catch std.debug.panic("fixme", .{});
-            std.mem.copy([]const u8, supported_protos, supported_protocols);
-
-            return Self{
-                .allocator = allocator,
-                .quic_buffer_pool = initialized_quic_buffer_pool,
-                .msg_buffer_pool = MemoryPool([256]u8).init(allocator),
-                .supported_protocols = supported_protos,
-                .mss_state = MultistreamStateMachine.init(allocator, supported_protocols, is_initiator),
-                .is_initiator = is_initiator,
-                .msquic = msquic,
+        pub fn init(
+            allocator: Allocator,
+            wrappedHandler: WrappedHandler,
+            msquic: *MsQuic.QUIC_API_TABLE,
+            stream_handle: MsQuic.HQUIC,
+            is_initiator: bool,
+            supported_protos: [][]const u8,
+            initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        ) !Self {
+            return .{
+                .wrapped = wrappedHandler,
+                .mss = Handler.init(
+                    allocator,
+                    Self.handleMSSEvent,
+                    msquic,
+                    stream_handle,
+                    is_initiator,
+                    supported_protos,
+                    initialized_quic_buffer_pool,
+                ),
             };
         }
 
         pub fn deinit(self: *Self) void {
-            self.msg_buffer_pool.deinit();
-            self.mss_state.deinit();
-            self.allocator.free(self.supported_protocols);
+            self.mss.deinit();
+            self.wrapped.deinit();
         }
 
-        pub fn initiate(self: *Self, stream: MsQuic.HQUIC, context: Context) !void {
-            self.context = context;
-            // self.mssEventHandler = handleMultistreamSelectEvent;
-            // TODO fix
-            var in_bufs = [_][]const u8{undefined} ** 0;
-            self.driveMultistream(stream, in_bufs[0..0]) catch |err| {
-                _ = mssEventHandler(self.context, stream, .{ .failed = MultistreamStateMachine.MSSError.FailedToNegotiateMS });
-                return err;
-            };
-        }
-
-        pub fn isDone(self: *Self) bool {
-            return self.state == .done;
-        }
-
-        pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) MsQuic.QUIC_STATUS {
-            log.debug("MSS handling event: from={any} {}\n", .{ stream, event.*.Type });
-            if (self.state == .failed or self.state == .done) {
-                return QuicStatus.Success;
-            }
-
-            switch (event.*.Type) {
-                MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
-                    switch (self.state) {
-                        .done => {
-                            return QuicStatus.Success;
-                        },
-                        .negotiating => {
-                            const buffers = event.*.unnamed_0.RECEIVE;
-                            var in_bufs = [_][]const u8{undefined} ** 32;
-
-                            var i: u32 = 0;
-                            for (buffers.Buffers[0..buffers.BufferCount]) |buf| {
-                                in_bufs[i] = buf.Buffer[0..buf.Length];
-                                log.debug("Received: {s}", .{in_bufs[i]});
-                                i += 1;
-                            }
-
-                            self.driveMultistream(stream, &in_bufs) catch {
-                                _ = mssEventHandler(self.context, stream, .{ .failed = MultistreamStateMachine.MSSError.FailedToNegotiateMS });
-                                return QuicStatus.OutOfMemory;
-                            };
-                        },
-                        .failed => {},
-                        .optimisticallyDone => {},
-                    }
-                },
-
-                MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
-                    if (event.*.unnamed_0.SEND_COMPLETE.ClientContext) |ctx| {
-                        const sent_quic_buffer = @ptrCast(*MsQuic.QUIC_BUFFER, @alignCast(@alignOf(MsQuic.QUIC_BUFFER), ctx));
-                        const sent_buf = @ptrCast(*align(8) [256]u8, @alignCast(8, sent_quic_buffer.Buffer));
-                        self.msg_buffer_pool.destroy(sent_buf);
-                        // self.allocator.destroy(sent_buf);
-                        // self.allocator.destroy(sent_quic_buffer);
-                        self.quic_buffer_pool.destroy(sent_quic_buffer);
-                    }
-
-                    if (self.mss_state.state == .using_protocol) {
-                        self.state = .done;
-                        self.negotiated_protocol = self.mss_state.state.using_protocol;
-                        const status = mssEventHandler(self.context, stream, .{ .negotiated = self.negotiated_protocol.? });
-                        if (QuicStatus.isError(status)) {
-                            return status;
-                        }
-                    }
-                },
-                MsQuic.QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE => {
-                    log.debug("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE: {}", .{event.*.unnamed_0.IDEAL_SEND_BUFFER_SIZE.ByteCount});
-                },
-
-                MsQuic.QUIC_STREAM_EVENT_PEER_SEND_ABORTED, MsQuic.QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED => {
-                    log.debug("Peer aborted stream\n", .{});
-                    _ = self.msquic.StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
-                },
-
-                MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
-                    self.deinit();
-                },
-
-                else => {},
-            }
-
-            return QuicStatus.Success;
-        }
-
-        fn driveMultistream(self: *Self, handle: MsQuic.HQUIC, in_bufs: [][]const u8) !void {
-            var send_bufs = ([_][]u8{undefined} ** 1024);
-            var event_buf = MultistreamStateMachine.Events{
-                .sends = send_bufs[0..],
-            };
-
-            var quic_buf_to_send = try self.quic_buffer_pool.create();
-            var buf = try self.msg_buffer_pool.create();
-
-            const events = try self.mss_state.processIn(in_bufs, buf[0..], event_buf);
-
-            var total_send_len: u32 = 0;
-            for (events.sends) |send| {
-                total_send_len += @intCast(u32, send.len);
-            }
-            const buf_ptr = buf[0..];
-            quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
-                .Length = total_send_len,
-                .Buffer = buf_ptr,
-            };
-            std.log.debug("supported protos={s}\n", .{self.supported_protocols});
-            _ = self.msquic.StreamSend.?(
-                handle,
-                quic_buf_to_send,
-                1,
-                MsQuic.QUIC_SEND_FLAG_NONE,
-                quic_buf_to_send,
-            );
-        }
-    };
-}
-
-const MultistreamStateMachine = struct {
-    state: State,
-    supported_protocols: []const []const u8,
-    buf: BufferedManyBufsReader,
-    is_initiator: bool,
-
-    // A small buf to keep state between reads (just when negotiating)
-    pub const State = union(enum) {
-        negotiating_multistream: struct {
-            sent_ms_id: bool = false,
-            got_back_ms_id: bool = false,
-            waiting_for_protocol_resp: bool = false,
-        },
-        using_protocol: []const u8,
-        // todo error state
-    };
-
-    pub const Events = struct {
-        sends: [][]u8,
-
-        pub fn format(value: Events, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-            _ = options;
-            _ = fmt;
-            for (value.sends) |send| {
-                try writer.print("{{ Send = {{ to_send.len = {} }} }}", .{send.len});
-            }
-        }
-    };
-
-    pub const MSSError = error{
-        FailedToNegotiateMS,
-        VarIntTooLarge,
-        OOM,
-    };
-
-    pub fn init(allocator: Allocator, supported_protocols: []const []const u8, is_initiator: bool) @This() {
-        return .{
-            .state = State{ .negotiating_multistream = .{
-                .waiting_for_protocol_resp = !is_initiator,
-            } },
-            .is_initiator = is_initiator,
-            .supported_protocols = supported_protocols,
-            .buf = BufferedManyBufsReader.init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.buf.deinit();
-    }
-
-    pub fn negotiateMultistream(self: *MultistreamStateMachine, in_bufs: [][]const u8, send_b: []u8, events_buf: Events) MSSError!Events {
-        var sends = events_buf.sends[0..];
-        var send_buf = send_b;
-        self.buf.withBorrowedBufs(in_bufs);
-        defer self.buf.clearBorrowedBufs();
-
-        var state = &self.state.negotiating_multistream;
-
-        if (!state.sent_ms_id) {
-            send_buf[0] = multistream_protocol_id_with_newline.len;
-            std.mem.copy(u8, send_buf[1..], multistream_protocol_id_with_newline[0..]);
-
-            assert(sends.len > 0);
-            sends[0] = send_buf[0 .. multistream_protocol_id_with_newline.len + 1];
-            sends = sends[1..];
-
-            send_buf = send_buf[multistream_protocol_id_with_newline.len + 1 ..];
-            state.sent_ms_id = true;
-        }
-
-        if (!state.got_back_ms_id) {
-            if (self.buf.len < multistream_protocol_id_with_newline.len + 1) {
-                self.buf.copyBorrowedBufs() catch {
-                    return MSSError.OOM;
+        pub fn initiateMSS(self: *Self, stream_handle: MsQuic.HQUIC, proto: []const u8) void {
+            if (self.mss.is_initiator) {
+                self.mss.initiateMSS(stream_handle, proto) catch |err| {
+                    log.err("initiator={} initiateMSS failed: {}", .{ self.mss.is_initiator, err });
                 };
-            } else {
-                const proto_len = self.buf.readByte() catch unreachable;
-                self.buf.consume(1);
-                if (proto_len == (multistream_protocol_id_with_newline.len) and (self.buf.isBytes(multistream_protocol_id_with_newline) catch unreachable)) {
-                    self.buf.consume(multistream_protocol_id_with_newline.len);
-                    state.got_back_ms_id = true;
-                } else {
-                    return MSSError.FailedToNegotiateMS;
-                }
             }
         }
 
-        if (state.sent_ms_id and !state.waiting_for_protocol_resp and self.is_initiator) {
-            if (self.supported_protocols.len == 0) {
-                return MSSError.FailedToNegotiateMS;
-            }
-
-            const next_proto = self.supported_protocols[0];
-            send_buf[0] = @intCast(u8, next_proto.len + 1);
-            std.mem.copy(u8, send_buf[1..], next_proto);
-            send_buf[next_proto.len + 1] = '\n';
-
-            assert(sends.len > 0);
-            sends[0] = send_buf[0..(next_proto.len + 2)];
-            sends = sends[1..];
-
-            send_buf = send_buf[next_proto.len + 2 ..];
-            state.waiting_for_protocol_resp = true;
-        }
-
-        if (state.got_back_ms_id) {
-            if (state.waiting_for_protocol_resp and self.buf.len > 0 and self.is_initiator) {
-                const proto_len = self.buf.readByte() catch unreachable;
-                if (proto_len > 0x7F) {
-                    return MSSError.VarIntTooLarge;
-                }
-                if (self.buf.len < proto_len + 1) {
-                    self.buf.copyBorrowedBufs() catch {
-                        return MSSError.OOM;
-                    };
-                } else {
-                    self.buf.consume(1);
-
-                    if (self.buf.isBytes("na") catch unreachable) {
-                        // Try next protocol
-                        self.supported_protocols = self.supported_protocols[1..];
-                        state.waiting_for_protocol_resp = false;
-                    } else if (self.buf.isBytes(self.supported_protocols[0]) catch false) {
-                        self.state = MultistreamStateMachine.State{ .using_protocol = self.supported_protocols[0] };
-                        return Events{
-                            .sends = events_buf.sends[0..(events_buf.sends.len - sends.len)],
-                        };
+        pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
+            log.debug("initiator={} MSS state={} handleEvent: {any}", .{ self.mss.is_initiator, self.mss.state, event.*.Type });
+            switch (self.mss.state) {
+                .done => {
+                    // No more events need to be passed to MSS.
+                    return try self.wrapped.handleEvent(stream, event);
+                },
+                .ready => {
+                    // MSS needs to read these events
+                    return try self.mss.handleEvent(stream, event);
+                },
+                .optimistically_negotiated => {
+                    if (self.mss.is_initiator) {
+                        switch (event.*.Type) {
+                            MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
+                                // As the initiator we need to wait the peer to send the MSS back
+                                return try self.mss.handleEvent(stream, event);
+                            },
+                            else => {
+                                // Any other events we don't care about.
+                                return try self.wrapped.handleEvent(stream, event);
+                            },
+                        }
                     } else {
-                        std.debug.print("here??\n\n", .{});
-                        return MSSError.FailedToNegotiateMS;
-                    }
-                }
-            }
-
-            if (state.waiting_for_protocol_resp and self.buf.len > 0 and !self.is_initiator) {
-                const proto_len = self.buf.readByte() catch unreachable;
-                if (proto_len > 0x7F) {
-                    return MSSError.VarIntTooLarge;
-                }
-                if (self.buf.len < proto_len + 1) {
-                    // Wait until we get the full protocol
-                    self.buf.copyBorrowedBufs() catch {
-                        return MSSError.OOM;
-                    };
-                } else {
-                    self.buf.consume(1);
-
-                    for (self.supported_protocols) |candidate_protocol| {
-                        if (candidate_protocol.len + 1 == proto_len and self.buf.isBytes(candidate_protocol) catch unreachable) {
-                            // Found match, echo back the protocol
-                            send_buf[0] = @intCast(u8, candidate_protocol.len + 1);
-                            std.mem.copy(u8, send_buf[1..], candidate_protocol);
-                            send_buf[candidate_protocol.len + 1] = '\n';
-                            assert(sends.len > 0);
-                            sends[0] = send_buf[0 .. candidate_protocol.len + 2];
-                            sends = sends[1..];
-                            send_buf = send_buf[candidate_protocol.len + 2 ..];
-                            self.state = MultistreamStateMachine.State{ .using_protocol = candidate_protocol };
-                            return Events{
-                                .sends = events_buf.sends[0..(events_buf.sends.len - sends.len)],
-                            };
+                        switch (event.*.Type) {
+                            MsQuic.QUIC_STREAM_EVENT_SEND_COMPLETE => {
+                                // As the non-initiator we need to wait for our sends to finish
+                                return try self.mss.handleEvent(stream, event);
+                            },
+                            else => {
+                                // Any other events we don't care about.
+                                return try self.wrapped.handleEvent(stream, event);
+                            },
                         }
                     }
-                    self.buf.consume(proto_len);
-
-                    // Send na
-                    send_buf[0] = na_with_newline.len;
-                    std.mem.copy(u8, send_buf[1..], na_with_newline);
-
-                    assert(sends.len > 0);
-                    sends[0] = send_buf[0 .. na_with_newline.len + 1];
-                    sends = sends[1..];
-
-                    send_buf = send_buf[na_with_newline.len + 1 ..];
-                }
+                },
+                .failed => {
+                    log.debug("initiator={} MSS has failed. Dropping event: {}", .{ self.mss.is_initiator, event.*.Type });
+                    return QuicStatus.EventHandlerError.InternalError;
+                },
             }
         }
 
-        return Events{
-            .sends = events_buf.sends[0..(events_buf.sends.len - sends.len)],
-        };
-    }
-
-    pub fn processIn(self: *MultistreamStateMachine, in_bufs: [][]const u8, send_buf: []u8, events_buf: Events) MSSError!Events {
-        switch (self.state) {
-            .negotiating_multistream => {
-                return self.negotiateMultistream(in_bufs, send_buf, events_buf);
-            },
-            .using_protocol => {
-                // Nothing to do, we've negotiated the protocol
-                return Events{
-                    .sends = events_buf.sends[0..0],
-                };
-            },
+        pub fn handleMSSEvent(handler: *Handler, stream: MsQuic.HQUIC, event: MultistreamEvent) void {
+            const self = @fieldParentPtr(Self, "mss", handler);
+            switch (event) {
+                .optimistically_negotiated => |proto| {
+                    if (self.mss.is_initiator) {
+                        self.wrapped.streamStarted(stream, proto);
+                    }
+                },
+                .negotiated => |proto| {
+                    if (!self.mss.is_initiator) {
+                        self.wrapped.streamStarted(stream, proto);
+                    }
+                },
+                .failed => {
+                    // TODO close stream?
+                    log.debug("initiator={} MSS negotiation failed", .{self.mss.is_initiator});
+                },
+            }
         }
-    }
-};
 
-test "BufferedManyBufsReader" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    var br = BufferedManyBufsReader.init(allocator);
-    defer br.deinit();
-    var borrowed_bufs = [_][]const u8{
-        "hello", "world",
+        pub inline fn getParentPtrFromWrappedHandler(wrapped_handler: *WrappedHandler) *Self {
+            return @fieldParentPtr(Self, "wrapped", wrapped_handler);
+        }
     };
-    br.withBorrowedBufs(borrowed_bufs[0..]);
-
-    try testing.expect(try br.isBytes("hel"));
-    try testing.expect(try br.isBytes("helloworld"));
-
-    try testing.expectEqual(@as(usize, 10), br.len);
-    try testing.expectEqual(@as(u8, 'h'), try br.readByte());
-
-    br.clearBorrowedBufs();
-    try testing.expectEqual(@as(usize, 0), br.len);
-
-    br.withBorrowedBufs(borrowed_bufs[0..]);
-    br.consume(1);
-    try testing.expectEqual(@as(u8, 'e'), try br.readByte());
-    try testing.expectEqual(@as(usize, 9), br.len);
-
-    br.consume(6);
-    try testing.expectEqual(@as(u8, 'r'), try br.readByte());
-    try testing.expectEqual(@as(usize, 3), br.len);
-
-    try br.copyBorrowedBufs();
-    try testing.expectEqual(@as(u8, 'r'), try br.readByte());
-    try testing.expectEqual(@as(usize, 3), br.len);
-
-    br.consume(1);
-    try testing.expectEqual(@as(u8, 'l'), try br.readByte());
-    try testing.expectEqual(@as(usize, 2), br.len);
-
-    try testing.expect(try br.isBytes("ld"));
-
-    try testing.expectError(BufferedManyBufsReader.Error.NotEnoughBytes, br.isBytes("ldhello"));
-
-    var borrowed_bufs2 = [_][]const u8{
-        "hello", "world",
-    };
-    br.withBorrowedBufs(borrowed_bufs2[0..]);
-    try testing.expect(try br.isBytes("ldhelloworld"));
-    try testing.expectEqual(@as(usize, 12), br.len);
-
-    br.clearBorrowedBufs();
-    try testing.expect(try br.isBytes("ld"));
-    br.clearBorrowedBufs();
-    try testing.expect(try br.isBytes("ld"));
-    try testing.expectEqual(@as(usize, 2), br.len);
-    try testing.expect(!(try br.isBytes("lo")));
 }
 
-pub const BufferedManyBufsReader = struct {
-    allocator: Allocator,
-    owned_bufs: TailQueue([]u8) = .{},
-    borrowed_bufs: [][]const u8 = empty_bufs,
-    len: usize = 0,
+const TestMeta = void;
 
-    const empty_bufs = &[0][]const u8{};
+pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *std.Thread.Semaphore) !void {
+    const libp2p = @import("../libp2p.zig");
+    const multiaddr = libp2p.multiaddr;
 
-    pub const Error = error{
-        /// We don't have enough bytes to fulfill the request
-        NotEnoughBytes,
-    };
+    addr_semaphore.wait();
 
-    pub fn init(allocator: Allocator) @This() {
-        return .{
-            .allocator = allocator,
-        };
-    }
+    const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
+    defer ma.deinit(allocator);
 
-    pub fn deinit(self: *@This()) void {
-        while (self.owned_bufs.pop()) |node| {
-            self.allocator.free(node.*.data);
-            self.allocator.destroy(node);
-        }
-    }
+    var client = try Node.init(allocator);
+    defer client.deinit();
 
-    /// Reads slice.len bytes from the stream and returns if they are the same as the passed slice
-    pub fn isBytes(self: *@This(), s: []const u8) !bool {
-        var slice = s;
-        var maybe_node = self.owned_bufs.first;
-        while (maybe_node) |node| {
-            if (slice.len <= node.data.len) {
-                // compare the whole slice against this buf
-                return std.mem.eql(u8, node.data[0..slice.len], slice);
-            } else {
-                // compare the partial slice against this buf
-                if (!std.mem.eql(u8, node.data, slice[0..node.data.len])) {
-                    return false;
-                }
-                slice = slice[node.data.len..];
-            }
+    log.info("Warmup to establish connection", .{});
+    var stream_and_conn = try client.dialAndStartStream(.{
+        .target = ma.target,
+        .target_port = ma.port,
+        .proto = proto_to_dial,
+    });
+    defer client.msquic.ConnectionShutdown.?(stream_and_conn.conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 
-            maybe_node = node.next;
-        }
+    // Wait for perf to finish
+    client.test_env.done_semaphore.wait();
+}
 
-        // start reading from the borrowed bufs
-        for (self.borrowed_bufs) |buf| {
-            if (slice.len <= buf.len) {
-                // compare the whole slice against this buf
-                return std.mem.eql(u8, buf[0..slice.len], slice);
-            } else {
-                // compare the partial slice against this buf
-                if (!std.mem.eql(u8, buf, slice[0..buf.len])) {
-                    return false;
-                }
-                slice = slice[buf.len..];
-            }
-        }
+test "MSS protocol" {
+    std.testing.log_level = .debug;
+    // std.testing.log_level = .info;
+    const test_util = @import("../util/test_util.zig");
+    const TestNode = @import("../util/test_util.zig").TestNode;
+    const Node = TestNode(TestMSSStreamContext, TestMeta, TestMSSStreamContext.init);
+    const allocator = std.testing.allocator;
+    const Semaphore = std.Thread.Semaphore;
 
-        return Error.NotEnoughBytes;
-    }
+    var shutdown_listener_sem: Semaphore = .{};
+    var listener_multiaddr_semaphore: Semaphore = .{};
+    var listener_multiaddr: []const u8 = undefined;
 
-    /// Reads 1 byte from the stream or returns Error.NotEnoughBytes.
-    pub fn readByte(self: *@This()) Error!u8 {
-        if (self.owned_bufs.first) |owned_buf| {
-            return owned_buf.data[0];
-        }
+    var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+    try runTestDialer(allocator, Node, "", &listener_multiaddr, &listener_multiaddr_semaphore);
 
-        if (self.borrowed_bufs.len > 0) {
-            return self.borrowed_bufs[0][0];
-        }
-
-        return Error.NotEnoughBytes;
-    }
-
-    /// Consumes this number of bytes
-    pub fn consume(self: *@This(), l: usize) void {
-        var len = l;
-        assert(len <= self.len);
-        self.len -= len;
-
-        while (len > 0 and self.owned_bufs.len > 0) {
-            var owned_buf = self.owned_bufs.first.?;
-            if (len >= owned_buf.data.len) {
-                len -= owned_buf.data.len;
-                self.allocator.free(owned_buf.data);
-                self.allocator.destroy(owned_buf);
-                _ = self.owned_bufs.popFirst();
-
-                continue;
-            }
-
-            owned_buf.data = owned_buf.data[len..];
-            len = 0;
-            return;
-        }
-
-        while (len > 0 and self.borrowed_bufs.len > 0) {
-            var borrowed_buf = &self.borrowed_bufs[0];
-            if (len >= borrowed_buf.len) {
-                len -= borrowed_buf.len;
-                self.borrowed_bufs = self.borrowed_bufs[1..];
-                continue;
-            }
-
-            borrowed_buf.* = borrowed_buf.*[len..];
-            len = 0;
-            return;
-        }
-
-        assert(len == 0);
-    }
-
-    pub fn copyBorrowedBufs(self: *@This()) !void {
-        var size: usize = 0;
-        for (self.borrowed_bufs) |buf| {
-            size += buf.len;
-        }
-        if (size == 0) {
-            return;
-        }
-
-        var node = try self.allocator.create(TailQueue([]u8).Node);
-
-        node.*.data = try self.allocator.alloc(u8, size);
-        var idx: usize = 0;
-        for (self.borrowed_bufs) |buf| {
-            std.mem.copy(u8, node.*.data[idx..], buf);
-            idx += buf.len;
-        }
-        self.owned_bufs.append(node);
-
-        self.borrowed_bufs = empty_bufs;
-    }
-
-    /// sets borrowed bufs
-    pub fn withBorrowedBufs(self: *@This(), borrowed_bufs: [][]const u8) void {
-        var size: usize = 0;
-        for (borrowed_bufs) |buf| {
-            size += buf.len;
-        }
-
-        self.len += size;
-        self.borrowed_bufs = borrowed_bufs;
-    }
-
-    pub fn clearBorrowedBufs(self: *@This()) void {
-        var size: usize = 0;
-        for (self.borrowed_bufs) |buf| {
-            size += buf.len;
-        }
-
-        self.len -= size;
-
-        self.borrowed_bufs = empty_bufs;
-    }
-};
+    shutdown_listener_sem.post();
+    listener_thread.join();
+}
