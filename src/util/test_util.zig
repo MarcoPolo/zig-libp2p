@@ -384,7 +384,7 @@ pub fn TestNode(
 
             fn inboundConnectionCallback(connection: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_CONNECTION_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
                 const self = @ptrCast(*ListenerContext, @alignCast(@alignOf(ListenerContext), self_ptr));
-                log.debug("inbound connection event: from={any} {}\n", .{ connection, event.*.Type });
+                log.debug("inbound connection event: from={any} {s}\n", .{ connection, MsQuic.connectionEventToString(event.*.Type) });
 
                 switch (event.*.Type) {
                     MsQuic.QUIC_CONNECTION_EVENT_CONNECTED => {
@@ -437,7 +437,7 @@ pub fn TestNode(
 
         fn outboundConnectionCallback(connection: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_CONNECTION_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
             const self = @ptrCast(*Self, @alignCast(@alignOf(Self), self_ptr));
-            log.debug("Connection event: from={any} {}\n", .{ connection, event.*.Type });
+            log.debug("outbound connection event: from={any} {s}\n", .{ connection, MsQuic.connectionEventToString(event.*.Type) });
 
             switch (event.*.Type) {
                 MsQuic.QUIC_CONNECTION_EVENT_CONNECTED => {

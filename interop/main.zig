@@ -24,6 +24,7 @@ const ifaddrs = @cImport({
 const stdout = std.io.getStdOut();
 
 const TestEnv = libp2p.util.test_util.TestEnv(void);
+var supported_protos = [_][]const u8{ping.id};
 pub const InteropStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
@@ -41,7 +42,6 @@ pub const InteropStreamContext = struct {
         log.debug("Creating ping stream context", .{});
         const pingHandler = ping.Handler.init(InteropStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool);
 
-        var supported_protos = [_][]const u8{ping.id};
         return .{
             .allocator = allocator,
             .stream_handle = stream,
