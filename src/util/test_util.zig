@@ -9,7 +9,7 @@ const crypto = libp2p.crypto;
 const CredentialConfigHelper = @import("libp2p-msquic").crypto.CredentialConfigHelper;
 const getPeerPubKey = @import("libp2p-msquic").crypto.getPeerPubKey;
 const log = std.log;
-const MSS = libp2p.protocols.MSS;
+const mss = libp2p.protocols.mss;
 
 const Allocator = std.mem.Allocator;
 const QuicStatus = MsQuic.QuicStatus;
@@ -37,7 +37,6 @@ pub fn TestNode(
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
         stream: MsQuic.HQUIC,
-        protocol: []const u8,
         is_initiator: bool,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
         test_env: *TestEnv(TestEnvMeta),
@@ -56,15 +55,13 @@ pub fn TestNode(
         configuration: MsQuic.HQUIC,
         quic_buffer_pool: MemoryPool(MsQuic.QUIC_BUFFER),
 
-        supported_protos: [][]const u8,
-
         const DialSettings = struct {
             target: [:0]const u8 = "",
             target_port: u16 = 0,
             proto: []const u8,
         };
 
-        pub fn init(allocator: Allocator, supported_protos: [][]const u8) !@This() {
+        pub fn init(allocator: Allocator) !@This() {
             const host_key = try crypto.OpenSSLKey.ED25519KeyPair.new();
             var msquic: *MsQuic.QUIC_API_TABLE = undefined;
             const msquic_ptr = @ptrCast([*c]?*const anyopaque, &msquic);
@@ -129,7 +126,6 @@ pub fn TestNode(
                 .registration = registration,
                 .configuration = configuration,
                 .quic_buffer_pool = MemoryPool(MsQuic.QUIC_BUFFER).init(allocator),
-                .supported_protos = supported_protos,
             };
         }
         pub fn deinit(self: *@This()) void {
@@ -150,7 +146,6 @@ pub fn TestNode(
                 self.allocator,
                 self.msquic,
                 undefined,
-                proto,
                 true,
                 &self.quic_buffer_pool,
                 &self.test_env,
@@ -177,7 +172,7 @@ pub fn TestNode(
                 return error.StreamStartFailed;
             }
 
-            try stream_context.streamStarted();
+            try stream_context.initiateMSS(stream_context.stream_handle, proto);
 
             return stream_context;
         }
@@ -195,7 +190,6 @@ pub fn TestNode(
                 self.allocator,
                 self.msquic,
                 undefined,
-                dial_settings.proto,
                 true,
                 &self.quic_buffer_pool,
                 &self.test_env,
@@ -222,7 +216,7 @@ pub fn TestNode(
                 return error.StreamStartFailed;
             }
 
-            try stream_context.streamStarted();
+            try stream_context.initiateMSS(stream_context.stream_handle, dial_settings.proto);
 
             var quic_addr_to_dial: MsQuic.QUIC_ADDR = undefined;
             var res = MsQuic.QuicAddrFromString(dial_settings.target.ptr, dial_settings.target_port, &quic_addr_to_dial);
@@ -402,20 +396,28 @@ pub fn TestNode(
                         }
                     },
                     MsQuic.QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED => {
-                        var stream_context = self.allocator.create(InboundStreamContext) catch {
+                        var stream_context = self.allocator.create(StreamContext) catch {
                             return QuicStatus.OutOfMemory;
                         };
-                        stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, self.quic_buffer_pool, self.app.supported_protos, self.app);
                         const stream_handle = event.*.unnamed_0.PEER_STREAM_STARTED.Stream;
+                        stream_context.* = InitStreamContextFn(
+                            self.allocator,
+                            self.app.msquic,
+                            stream_handle,
+                            false,
+                            &self.app.quic_buffer_pool,
+                            &self.app.test_env,
+                        ) catch |err| {
+                            std.debug.print("conn={any} Failed to create stream context: {any}\n", .{ connection, err });
+                            return QuicStatus.OutOfMemory;
+                        };
 
                         self.msquic.SetCallbackHandler.?(
                             stream_handle,
-                            @intToPtr(*anyopaque, @ptrToInt(&InboundStreamContext.handleStreamEvent)),
+                            @intToPtr(*anyopaque, @ptrToInt(&MsQuic.HandleEventWrapper(StreamContext, StreamContext.handleEvent).streamCallback)),
                             stream_context,
                         );
-                        stream_context.mss.initiate(stream_handle, stream_context) catch {
-                            return QuicStatus.OutOfMemory;
-                        };
+                        // stream_context.streamStarted();
                     },
                     MsQuic.QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED => {
                         // The peer has sent a certificate.
@@ -433,93 +435,6 @@ pub fn TestNode(
             }
         };
 
-        const InboundStreamContext = struct {
-            const MultistreamSelect = MSS.MultistreamSelect(*InboundStreamContext, handleMSSEvent);
-            state: State = .negotiating_multistream,
-            mss: MultistreamSelect,
-            allocator: Allocator,
-            msquic: *MsQuic.QUIC_API_TABLE,
-            quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-            app: *Self,
-            const State = enum {
-                ready,
-                negotiating_multistream,
-                failed_multistream,
-            };
-
-            pub fn init(
-                allocator: Allocator,
-                msquic: *MsQuic.QUIC_API_TABLE,
-                quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
-                supported_protos: [][]const u8,
-                app: *Self,
-            ) @This() {
-                return @This(){
-                    .allocator = allocator,
-                    .msquic = msquic,
-                    .mss = MultistreamSelect.init(allocator, msquic, supported_protos, false, quic_buffer_pool),
-                    .quic_buffer_pool = quic_buffer_pool,
-                    .app = app,
-                };
-            }
-
-            pub fn deinit(self: *@This()) void {
-                self.mss.deinit();
-            }
-
-            pub fn handleMSSEvent(self: *InboundStreamContext, stream: MsQuic.HQUIC, mssEvent: MSS.MultistreamEvent) c_uint {
-                switch (mssEvent) {
-                    .optimistically_negotiated => {
-                        // Shouldn't happen on inbound streams
-                        unreachable;
-                    },
-                    .negotiated => |proto| {
-                        self.state = .ready;
-                        var app_stream_context = self.allocator.create(StreamContext) catch {
-                            return QuicStatus.OutOfMemory;
-                        };
-
-                        // Transfering ownership. Clean ourselves up.
-                        defer self.allocator.destroy(self);
-                        defer self.deinit();
-
-                        log.debug("Negotiated protocol on inbound stream: {s}", .{proto});
-                        app_stream_context.* = InitStreamContextFn(
-                            self.allocator,
-                            self.msquic,
-                            stream,
-                            proto,
-                            false,
-                            self.quic_buffer_pool,
-                            &self.app.test_env,
-                        ) catch {
-                            return QuicStatus.OutOfMemory;
-                        };
-
-                        self.msquic.SetCallbackHandler.?(
-                            stream,
-                            @intToPtr(*anyopaque, @ptrToInt(&MsQuic.HandleEventWrapper(StreamContext, StreamContext.handleEvent).streamCallback)),
-                            app_stream_context,
-                        );
-
-                        return QuicStatus.Success;
-                    },
-                    .failed => |err| {
-                        self.state = .failed_multistream;
-                        log.err("Failed to negotiate proto: {any}", .{err});
-                    },
-                }
-
-                return QuicStatus.Success;
-            }
-
-            fn handleStreamEvent(stream: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
-                const self = @ptrCast(*InboundStreamContext, @alignCast(@alignOf(InboundStreamContext), self_ptr));
-                std.debug.assert(self.state == .negotiating_multistream);
-                return self.mss.handleEvent(stream, event);
-            }
-        };
-
         fn outboundConnectionCallback(connection: MsQuic.HQUIC, self_ptr: ?*anyopaque, event: [*c]MsQuic.struct_QUIC_CONNECTION_EVENT) callconv(.C) MsQuic.QUIC_STATUS {
             const self = @ptrCast(*Self, @alignCast(@alignOf(Self), self_ptr));
             log.debug("Connection event: from={any} {}\n", .{ connection, event.*.Type });
@@ -534,20 +449,26 @@ pub fn TestNode(
                     }
                 },
                 MsQuic.QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED => {
-                    var stream_context = self.allocator.create(InboundStreamContext) catch {
+                    var stream_context = self.allocator.create(StreamContext) catch {
                         return QuicStatus.OutOfMemory;
                     };
-                    stream_context.* = InboundStreamContext.init(self.allocator, self.msquic, &self.quic_buffer_pool, self.supported_protos, self);
                     const stream_handle = event.*.unnamed_0.PEER_STREAM_STARTED.Stream;
-
+                    stream_context.* = InitStreamContextFn(
+                        self.allocator,
+                        self.msquic,
+                        stream_handle,
+                        false,
+                        &self.quic_buffer_pool,
+                        &self.test_env,
+                    ) catch |err| {
+                        std.debug.print("conn={any} Failed to create stream context: {any}\n", .{ connection, err });
+                        return QuicStatus.OutOfMemory;
+                    };
                     self.msquic.SetCallbackHandler.?(
                         stream_handle,
-                        @intToPtr(*anyopaque, @ptrToInt(&InboundStreamContext.handleStreamEvent)),
+                        @intToPtr(*anyopaque, @ptrToInt(&MsQuic.HandleEventWrapper(StreamContext, StreamContext.handleEvent).streamCallback)),
                         stream_context,
                     );
-                    stream_context.mss.initiate(stream_handle, stream_context) catch {
-                        return QuicStatus.OutOfMemory;
-                    };
                 },
 
                 MsQuic.QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED => {
@@ -567,13 +488,13 @@ pub fn TestNode(
     };
 }
 
-pub fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
+pub fn runDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *Semaphore) !void {
     addr_semaphore.wait();
 
     const ma = try multiaddr.decodeMultiaddr(allocator, listener_multiaddr.*);
     defer ma.deinit(allocator);
 
-    var client = try Node.init(allocator, supported_protos);
+    var client = try Node.init(allocator);
     defer client.deinit();
 
     var stream_and_conn = try client.dialAndStartStream(.{
@@ -587,8 +508,8 @@ pub fn runDialer(allocator: Allocator, comptime Node: anytype, supported_protos:
     log.info("Shutting down", .{});
 }
 
-pub fn runListener(allocator: Allocator, comptime Node: anytype, supported_protos: [][]const u8, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
-    var server = try Node.init(allocator, supported_protos);
+pub fn runListener(allocator: Allocator, comptime Node: anytype, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
+    var server = try Node.init(allocator);
     defer server.deinit();
     var listener = server.newListener();
     try listener.listen(ip, 0);
@@ -613,69 +534,68 @@ pub fn runListener(allocator: Allocator, comptime Node: anytype, supported_proto
     shutdown_semaphore.wait();
 }
 
-const Ping = libp2p.protocols.Ping;
+const ping = libp2p.protocols.ping;
+const PingWithMSS = mss.WrapHandlerWithMSS(ping.Handler);
 const PingStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
-    ping: Ping.Handler,
+    ping: PingWithMSS,
     test_env: *TestEnv(void),
     pub fn init(
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
         stream: MsQuic.HQUIC,
-        protocol: []const u8,
         is_initiator: bool,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
         test_env: *TestEnv(void),
     ) error{OutOfMemory}!PingStreamContext {
         log.debug("Creating ping stream context", .{});
-        std.debug.assert(std.mem.eql(u8, protocol, Ping.id));
+        const pingHandler = ping.Handler.init(PingStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool);
+
+        var supported_protos = [_][]const u8{ping.id};
         return .{
             .allocator = allocator,
             .stream_handle = stream,
-            .ping = Ping.Handler.init(allocator, PingStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool),
+            .ping = try PingWithMSS.init(allocator, pingHandler, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
             .test_env = test_env,
         };
     }
 
     pub fn deinit(self: *PingStreamContext) void {
         self.allocator.destroy(self);
-        // self.ping.deinit();
+        self.ping.deinit();
     }
 
-    pub fn streamStarted(self: *PingStreamContext) !void {
-        try self.ping.initiate(self.stream_handle);
+    pub fn initiateMSS(self: *PingStreamContext, stream_handle: MsQuic.HQUIC, proto: []const u8) !void {
+        self.ping.initiateMSS(stream_handle, proto);
     }
 
     pub fn handleEvent(self: *PingStreamContext, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
-        const status = self.ping.handleEvent(stream, event);
-        if (status != QuicStatus.Success) {
-            std.debug.panic("Didn't handle event successfully: {} {}", .{ self.ping.is_initiator, status });
-
-            return QuicStatus.EventHandlerError.InternalError;
-        }
         switch (event.*.Type) {
             MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
                 self.deinit();
+                return .Success;
             },
-            else => {},
+            else => {
+                return try self.ping.handleEvent(stream, event);
+            },
         }
-
-        return .Success;
     }
 
-    pub fn handlePingEvent(handler: *Ping.Handler, stream: MsQuic.HQUIC, event: Ping.Event) MsQuic.QUIC_STATUS {
+    pub fn handlePingEvent(handler: *ping.Handler, stream: MsQuic.HQUIC, event: ping.Event) MsQuic.QUIC_STATUS {
         switch (event) {
             .ready => {
-                if (handler.is_initiator) {
-                    handler.sendPingMsg(stream) catch {
-                        return QuicStatus.InternalError;
-                    };
-                }
+                _ = stream;
+                // if (handler.is_initiator) {
+                //     handler.sendPingMsg(stream) catch {
+                //         return QuicStatus.InternalError;
+                //     };
+                // }
             },
             .ping_response_received => |dur| {
                 log.info("Ping response received: {} microseconds", .{dur / 1000});
-                const self = @fieldParentPtr(PingStreamContext, "ping", handler);
+                const pingWithMSS = @fieldParentPtr(PingWithMSS, "wrapped", handler);
+                const self = @fieldParentPtr(PingStreamContext, "ping", pingWithMSS);
                 self.test_env.done_semaphore.post();
             },
         }
@@ -694,9 +614,8 @@ test "Run test node with ping" {
     var listener_multiaddr_semaphore: Semaphore = .{};
     var listener_multiaddr: []const u8 = undefined;
 
-    var supported_protos = [_][]const u8{Ping.id};
-    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, Node, supported_protos[0..], "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
-    try runDialer(allocator, Node, supported_protos[0..], Ping.id, &listener_multiaddr, &listener_multiaddr_semaphore);
+    var listener_thread = try std.Thread.spawn(.{}, runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+    try runDialer(allocator, Node, ping.id, &listener_multiaddr, &listener_multiaddr_semaphore);
 
     shutdown_listener_sem.post();
     listener_thread.join();

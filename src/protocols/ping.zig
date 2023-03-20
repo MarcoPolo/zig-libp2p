@@ -4,7 +4,6 @@ const Allocator = std.mem.Allocator;
 const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
-const MSS = @import("./multistream_select.zig");
 
 var rng = std.rand.DefaultPrng.init(0);
 const random = rng.random();
@@ -21,12 +20,10 @@ pub const EventHandler = *const fn (*Handler, MsQuic.HQUIC, Event) MsQuic.QUIC_S
 
 pub const Handler = struct {
     const Self = @This();
-    const MultistreamSelect = MSS.MultistreamSelect(*Self, handleMSSEvent);
 
     quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
     sent_msg: [32]u8 = [_]u8{0} ** 32,
     is_initiator: bool = false,
-    multistream_select: MultistreamSelect,
     state: State,
     msquic: *MsQuic.QUIC_API_TABLE,
     start_time: ?std.time.Instant = null,
@@ -34,82 +31,43 @@ pub const Handler = struct {
     pingEventHandler: EventHandler,
 
     const State = enum {
-        negotiating_multistream,
         ready,
         ping_response_received,
     };
 
-    pub fn init(allocator: Allocator, eventHandler: EventHandler, msquic: *MsQuic.QUIC_API_TABLE, is_initiator: bool, initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) Self {
-        var ping = Self{
+    pub fn init(eventHandler: EventHandler, msquic: *MsQuic.QUIC_API_TABLE, is_initiator: bool, initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER)) Self {
+        return .{
             .pingEventHandler = eventHandler,
             .msquic = msquic,
             .quic_buffer_pool = initialized_quic_buffer_pool,
             .is_initiator = is_initiator,
-            .multistream_select = MultistreamSelect.init(allocator, msquic, &[_][]const u8{id}, is_initiator, initialized_quic_buffer_pool),
-            .state = .negotiating_multistream,
+            .state = .ready,
         };
-
-        // TODO this is needed because if we aren't the initiator we are presumably already done with this.
-        // It doesn't make sense for each protocol to have to deal with this.
-        if (!is_initiator) {
-            ping.state = .ready;
-            ping.multistream_select.state = .done;
-            ping.multistream_select.negotiated_protocol = id;
-        }
-        return ping;
     }
 
-    pub fn deinit(self: *Self) void {
-        self.multistream_select.deinit();
-    }
+    pub fn deinit(_: *Self) void {}
 
     pub fn initiate(self: *Self, stream: MsQuic.HQUIC) !void {
         log.debug("Initiating ping protocol", .{});
         try self.multistream_select.initiate(stream, self);
     }
 
-    pub fn handleMSSEvent(self: *Self, _: MsQuic.HQUIC, mssEvent: MSS.MultistreamEvent) c_uint {
-        switch (mssEvent) {
-            .negotiated, .optimistically_negotiated => {
-                self.state = .ready;
-            },
-            .failed => |err| {
-                log.err("Failed to negotiate ping: {any}", .{err});
-            },
-        }
-        return QuicStatus.Success;
-    }
-
-    pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) MsQuic.QUIC_STATUS {
+    pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
         log.debug("Ping handling event: initiator={} state={} from={any} {}\n", .{ self.is_initiator, self.state, stream, event.*.Type });
-        if (self.state == .negotiating_multistream) {
-            const status = self.multistream_select.handleEvent(stream, event);
-            if (QuicStatus.isError(status)) {
-                return status;
-            }
-            // todo clean this up
-            if (self.multistream_select.isDone()) {
-                log.debug("Ping protocol negotiated", .{});
-            }
-            if (self.multistream_select.isDone() and std.mem.eql(u8, self.multistream_select.negotiated_protocol.?, id)) {
-                self.state = .ready;
-                return self.pingEventHandler(self, stream, .{ .ready = {} });
-            }
-            return status;
-        }
-
         switch (event.*.Type) {
             MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
                 const buffers = event.*.unnamed_0.RECEIVE;
                 if (self.is_initiator) {
+                    log.debug("Total buf size: {} buffer count: {}\n", .{ buffers.TotalBufferLength, buffers.BufferCount });
                     const status = self.handlePingResp(stream, buffers.Buffers[0..buffers.BufferCount]);
                     if (QuicStatus.isError(status)) {
-                        return status;
+                        return QuicStatus.UintToEventHandlerError(status);
                     }
                 } else {
-                    return self.sendPong(stream, buffers.Buffers[0..buffers.BufferCount]) catch {
-                        return QuicStatus.OutOfMemory;
+                    self.sendPong(stream, buffers.Buffers[0..buffers.BufferCount]) catch {
+                        return QuicStatus.EventHandlerError.OutOfMemory;
                     };
+                    return .Success;
                 }
             },
 
@@ -135,28 +93,59 @@ pub const Handler = struct {
             else => {},
         }
 
-        return QuicStatus.Success;
+        return .Success;
     }
 
     fn handlePingResp(self: *Self, stream: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) c_uint {
-        for (bufs) |buf| {
-            if (buf.Length == 32) {
-                if (std.mem.eql(u8, buf.Buffer[0..32], &self.sent_msg)) {
-                    if (self.start_time) |start_time| {
-                        const end = std.time.Instant.now() catch {
-                            @panic("no time");
-                        };
-                        const dur = end.since(start_time);
-                        self.response_time = dur;
-                        return self.pingEventHandler(self, stream, .{ .ping_response_received = dur });
-                    }
-                } else {
-                    log.err("Wrong response: {s}", .{std.fmt.fmtSliceHexLower(buf.Buffer[0..buf.Length])});
-                    return QuicStatus.InternalError;
+        // Fast path
+        if (bufs.len > 0 and bufs[0].Length >= 32) {
+            if (std.mem.eql(u8, bufs[0].Buffer[0..32], &self.sent_msg)) {
+                if (self.start_time) |start_time| {
+                    const end = std.time.Instant.now() catch {
+                        @panic("no time");
+                    };
+                    const dur = end.since(start_time);
+                    self.response_time = dur;
+                    return self.pingEventHandler(self, stream, .{ .ping_response_received = dur });
                 }
             }
+            log.err("fast Wrong response: {s}", .{std.fmt.fmtSliceHexLower(bufs[0].Buffer[0..32])});
+            return QuicStatus.InternalError;
+        }
+
+        var recv_buf = [_]u8{0} ** 32;
+        var write_slice = recv_buf[0..];
+
+        for (bufs) |buf| {
+            const amount_to_copy = std.math.min(buf.Length, write_slice.len);
+            if (amount_to_copy == 0) {
+                break;
+            }
+            std.mem.copy(u8, write_slice[0..amount_to_copy], buf.Buffer[0..amount_to_copy]);
+        }
+        if (std.mem.eql(u8, &recv_buf, &self.sent_msg)) {
+            if (self.start_time) |start_time| {
+                const end = std.time.Instant.now() catch {
+                    @panic("no time");
+                };
+                const dur = end.since(start_time);
+                self.response_time = dur;
+                return self.pingEventHandler(self, stream, .{ .ping_response_received = dur });
+            }
+        } else {
+            log.err("Wrong response: {s}", .{std.fmt.fmtSliceHexLower(&recv_buf)});
+            log.err("Wrong response: {s}", .{&recv_buf});
+            return QuicStatus.InternalError;
         }
         return QuicStatus.Success;
+    }
+
+    pub fn streamStarted(self: *Self, stream: MsQuic.HQUIC, _: []const u8) void {
+        if (self.is_initiator) {
+            self.sendPingMsg(stream) catch |err| {
+                log.err("Failed to send ping message err={}", .{err});
+            };
+        }
     }
 
     pub fn sendPingMsg(self: *Self, stream: MsQuic.HQUIC) !void {
@@ -181,9 +170,8 @@ pub const Handler = struct {
         );
     }
 
-    fn sendPong(self: *Self, stream_handle: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) !MsQuic.QUIC_STATUS {
+    fn sendPong(self: *Self, stream_handle: MsQuic.HQUIC, bufs: []const MsQuic.QUIC_BUFFER) !void {
         var quic_buf_to_send = try self.quic_buffer_pool.create();
-        log.debug("Sending {*}", .{quic_buf_to_send});
 
         var bytes_written: usize = 0;
         var upto: usize = 32;
@@ -191,16 +179,15 @@ pub const Handler = struct {
             if (bytes_written == 32) {
                 break;
             }
-            if (qbuf.Length < upto) {
-                upto = qbuf.Length;
-            }
-            std.mem.copy(u8, self.sent_msg[bytes_written..32], qbuf.Buffer[0..upto]);
-            bytes_written += upto;
-            upto -= qbuf.Length;
+            const amount_to_copy = std.math.min(upto, qbuf.Length);
+            log.debug("got {s}", .{std.fmt.fmtSliceHexLower(qbuf.Buffer[0..amount_to_copy])});
+            std.mem.copy(u8, self.sent_msg[bytes_written..32], qbuf.Buffer[0..amount_to_copy]);
+            bytes_written += amount_to_copy;
+            upto -= amount_to_copy;
         }
         if (bytes_written != 32) {
             log.debug("aborting stream", .{});
-            return self.msquic.StreamShutdown.?(stream_handle, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+            _ = self.msquic.StreamShutdown.?(stream_handle, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
         }
 
         quic_buf_to_send.* = MsQuic.QUIC_BUFFER{
@@ -215,7 +202,6 @@ pub const Handler = struct {
             MsQuic.QUIC_SEND_FLAG_NONE,
             quic_buf_to_send,
         );
-        return QuicStatus.Success;
     }
 
     fn close(_: *Self) void {

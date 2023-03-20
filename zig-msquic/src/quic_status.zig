@@ -90,6 +90,35 @@ pub fn EventHandlerErrorToUint(err: EventHandlerError) c_uint {
     };
 }
 
+pub fn UintToEventHandlerError(err: c_uint) EventHandlerError {
+    return switch (err) {
+        12 => EventHandlerError.OutOfMemory,
+        22 => EventHandlerError.InvalidParameter,
+        1 => EventHandlerError.InvalidState,
+        codeAndCodeForMacOS(95, 102) => EventHandlerError.NotSupported,
+        2 => EventHandlerError.NotFound,
+        codeAndCodeForMacOS(75, 84) => EventHandlerError.BufferTooSmall,
+        codeAndCodeForMacOS(103, 53) => EventHandlerError.HandshakeFailure,
+        codeAndCodeForMacOS(125, 89) => EventHandlerError.Aborted,
+        codeAndCodeForMacOS(98, 48) => EventHandlerError.AddressInUse,
+        codeAndCodeForMacOS(97, 47) => EventHandlerError.InvalidAddress,
+        codeAndCodeForMacOS(110, 60) => EventHandlerError.ConnectionTimeout,
+        codeAndCodeForMacOS(62, 101) => EventHandlerError.ConnectionIdle,
+        5 => EventHandlerError.InternalError,
+        codeAndCodeForMacOS(111, 61) => EventHandlerError.ConnectionRefused,
+        codeAndCodeForMacOS(71, 100) => EventHandlerError.ProtocolError,
+        codeAndCodeForMacOS(93, 43) => EventHandlerError.VerNegError,
+        codeAndCodeForMacOS(113, 65) => EventHandlerError.Unreachable,
+        126 => EventHandlerError.TlsError,
+        codeAndCodeForMacOS(130, 105) => EventHandlerError.UserCanceled,
+        codeAndCodeForMacOS(92, 42) => EventHandlerError.AlpnNegFailure,
+        86 => EventHandlerError.StreamLimitReached,
+        else => {
+            @panic("Invalid error code");
+        },
+    };
+}
+
 fn tlsAlert(alert: c_uint) c_uint {
     return (0xff & alert) + TLS_ERROR_BASE;
 } //       ((QUIC_STATUS)(0xff & Alert) + TLS_ERROR_BASE)
