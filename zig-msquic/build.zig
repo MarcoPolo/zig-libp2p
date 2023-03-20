@@ -45,9 +45,9 @@ pub fn linkMsquic(allocator: std.mem.Allocator, target: std.zig.CrossTarget, l: 
 
     // Debug to catch issues
     const libmsquic_arch_path = if (releaseMode)
-        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl3" })
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Release", "openssl" })
     else
-        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl3" });
+        try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ arch_str, "Debug", "openssl" });
 
     l.addLibraryPath(try std.fs.path.join(allocator, &.{
         msquic_dir,
@@ -105,7 +105,6 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     tests.setBuildMode(mode);
     tests.filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter") orelse "";
     try linkMsquic(allocator, target, tests, true);
-    std.debug.print("Exe is in: {s} in {any}\n", .{ tests.out_filename, tests.output_dir });
     const tests_step = b.step("tests", "Build zig-msquic tests");
     tests_step.dependOn(&b.addInstallArtifact(tests).step);
 

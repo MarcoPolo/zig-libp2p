@@ -2,15 +2,15 @@
 
 pkgs.clangStdenv.mkDerivation rec {
   pname = "libmsquic";
-  version = "12681935c22129d72efafa0cb7ddb375cfde2de8";
-  # version = "2.1.8";
+  # version = "12681935c22129d72efafa0cb7ddb375cfde2de8";
+  version = "2.1.8";
   src = fetchFromGitHub {
     fetchSubmodules = true;
     owner = "microsoft";
     repo = "msquic";
     rev = version;
-    # sha256 = "sha256-Rm1c2hfgzwzd/1K479cBksuoqeOoEvZ2j+zuzFVR9ug=";
-    sha256 = "sha256-9L3kDIA4zXkqCTgDrKi2lvx9PhkwQ++aicXB1b0OIB4=";
+    sha256 = "sha256-Rm1c2hfgzwzd/1K479cBksuoqeOoEvZ2j+zuzFVR9ug=";
+    # sha256 = "sha256-9L3kDIA4zXkqCTgDrKi2lvx9PhkwQ++aicXB1b0OIB4=";
     # sha256 = pkgs.lib.fakeSha256;
   };
   buildInputs = [
@@ -38,7 +38,7 @@ pkgs.clangStdenv.mkDerivation rec {
 
     # Change to build release or static
     ${if debug then ''
-    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static -LoggingType stdout
+    HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Debug -Static
     '' else ''
     HOME=$TMPDIR pwsh ./scripts/build.ps1 -Config Release -Static
     ''}

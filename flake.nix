@@ -11,10 +11,10 @@
     };
   };
   inputs.zls = {
-    url = "github:zigtools/zls/master";
+    url = "github:marcopolo/zls/master";
     inputs = {
       nixpkgs.follows = "nixpkgs-unstable";
-      zig-overlay.follows = "zig-overlay";
+      # zig-overlay.follows = "zig-overlay";
       flake-utils.follows = "flake-utils";
     };
   };
@@ -89,19 +89,19 @@
             installPhase = ''
               cp -r zig-out $out
             '';
-        };
+          };
 
         packages.interopContainer = pkgs.dockerTools.buildImage {
           name = "interop-runner";
           config = {
-            Cmd = ["${self.packages.${system}.interop}/bin/interop"];
+            Cmd = [ "${self.packages.${system}.interop}/bin/interop" ];
           };
         };
 
         packages.zig-libp2p-fhs = (pkgs.buildFHSUserEnv {
           name = "code-server-env";
           targetPkgs = pkgs: (with pkgs;
-            [ glibc  openssl ]);
+            [ glibc openssl ]);
           runScript = "/usr/bin/bash";
         });
 

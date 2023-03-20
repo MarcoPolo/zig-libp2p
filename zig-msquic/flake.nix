@@ -38,6 +38,7 @@
           else [ ]);
 
           LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
+          LIB_MSQUIC_DEBUG = "${self.packages.${system}.libmsquic-debug}";
           LIB_OPENSSL = "${openssl.dev}";
           LIB_OPENSSL_DEBUG = "${openssl.dev}";
         };
