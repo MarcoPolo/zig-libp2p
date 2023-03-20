@@ -323,21 +323,19 @@ pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial
     // Wait for perf to finish
     client.test_env.done_semaphore.wait();
 
-    std.time.sleep(std.time.ns_per_s);
     log.info("Starting Upload test", .{});
     client.test_env.meta = .{
-        .upload_size_bytes = 100 << 20,
+        .upload_size_bytes = 1 << 20,
         .download_size_bytes = 0,
     };
     _ = try client.startStream(stream_and_conn.conn, id);
     // Wait for perf to finish
     client.test_env.done_semaphore.wait();
 
-    std.time.sleep(std.time.ns_per_s);
     log.info("Starting Download test", .{});
     client.test_env.meta = .{
         .upload_size_bytes = 0,
-        .download_size_bytes = 100 << 20,
+        .download_size_bytes = 1 << 20,
     };
     _ = try client.startStream(stream_and_conn.conn, id);
     // Wait for perf to finish

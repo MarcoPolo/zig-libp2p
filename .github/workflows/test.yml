@@ -29,3 +29,5 @@ jobs:
       - run: ./zig-out/bin/crypto-tests
       - run: nix develop . -c zig build interop-test
       - run: ./zig-out/bin/interop-test
+      - run: nix develop . -c zig build run-libp2p-tests
+      - run: ./zig-out/bin/libp2p-tests

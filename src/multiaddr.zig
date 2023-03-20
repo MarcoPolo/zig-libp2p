@@ -64,14 +64,15 @@ pub fn decodeMultiaddr(allocator: std.mem.Allocator, multiaddr: []const u8) !Mul
 
 test "decode simple multiaddrs" {
     const testcases = .{
-        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 1, 2, 3, 4 }, .port = 1234, .peerID = undefined } },
-        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 1, 2, 3, 4 }, .port = 1234, .peerID = undefined } },
-        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", MultiAddr{ .target = &[4:0]u8{ 4, 3, 2, 1 }, .port = 4321, .peerID = undefined } },
+        .{ "/ip4/1.2.3.4/tcp/1234/tls/p2p/QmFoo", MultiAddr{ .target = "1.2.3.4", .port = 1234, .peerID = undefined } },
+        .{ "/ip4/1.2.3.4/udp/1234/tls/p2p/QmFoo", MultiAddr{ .target = "1.2.3.4", .port = 1234, .peerID = undefined } },
+        .{ "/ip4/4.3.2.1/udp/4321/tls/p2p/QmFoo", MultiAddr{ .target = "4.3.2.1", .port = 4321, .peerID = undefined } },
     };
     const allocator = std.testing.allocator;
     inline for (testcases) |tc| {
-        const ipPort = try decodeMultiaddr(allocator, tc[0]);
-        try std.testing.expectEqual(tc[1], ipPort);
-        allocator.free(ipPort.target);
+        const ma = try decodeMultiaddr(allocator, tc[0]);
+        defer ma.deinit(allocator);
+        try std.testing.expectEqualStrings(tc[1].target, ma.target);
+        try std.testing.expectEqual(tc[1].port, ma.port);
     }
 }

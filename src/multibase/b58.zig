@@ -163,5 +163,8 @@ test {
     const res = try decode(allocator, "12D3KooWQ6XtYE7CjBxdZ9SyAJzLjJPd1JfAaZKMfRR99CpquMNm");
     defer allocator.free(res);
 
-    std.log.debug("{s}", .{std.fmt.fmtSliceHexLower(res)});
+    const expected = try std.fmt.allocPrint(allocator, "{s}", .{std.fmt.fmtSliceHexLower(res)});
+    defer allocator.free(expected);
+
+    try std.testing.expectEqualStrings("002408011220d427e6a9f008bc5d9e741fcb423e1ba71dd6241f1a58085d7a8e630b14a9e7fe", expected);
 }

@@ -20,6 +20,7 @@ pub const alpn = MsQuic.QUIC_BUFFER{
 };
 
 test {
+    _ = multiaddr;
     _ = util.test_util;
     _ = protocols.perf;
     _ = protocols.ping;

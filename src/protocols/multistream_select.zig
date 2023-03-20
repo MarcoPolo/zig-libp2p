@@ -378,16 +378,15 @@ const TestMSSStreamContext = struct {
         allocator: Allocator,
         msquic: *MsQuic.QUIC_API_TABLE,
         stream: MsQuic.HQUIC,
-        _: []const u8,
         is_initiator: bool,
         quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
         test_env: *TestEnv,
     ) error{OutOfMemory}!TestMSSStreamContext {
         var protos = [_][]const u8{"test"};
         return .{
+            .allocator = allocator,
             .stream_handle = stream,
             .mss = Handler.init(
-                allocator,
                 TestMSSStreamContext.handleMSSEvent,
                 msquic,
                 stream,
@@ -411,6 +410,10 @@ const TestMSSStreamContext = struct {
         if (self.is_initiator) {
             try self.mss.initiateMSS(stream_handle, "test");
         }
+    }
+
+    pub fn initiateMSS(self: *TestMSSStreamContext, stream_handle: MsQuic.HQUIC, _: []const u8) !void {
+        try self.streamStarted(stream_handle);
     }
 
     pub fn handleEvent(self: *TestMSSStreamContext, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {

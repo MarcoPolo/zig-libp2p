@@ -10,5 +10,5 @@ test "base32" {
     const size = comptime base32.std_encoding.encodeLen(src.len);
     var buf: [size]u8 = undefined;
     var out = no_padding_encoding.encode(&buf, src);
-    std.debug.print("source: \"{s}\"\noutput: {s}\n", .{ src, out });
+    std.log.debug("source: \"{s}\"\noutput: {s}\n", .{ src, out });
 }

@@ -134,7 +134,7 @@ pub const X509 = struct {
             var err_str = [_]u8{0} ** 1024;
             while (err != 0) {
                 c.ERR_error_string_n(err, err_str[0..], 1024);
-                std.debug.print("err code {}.\n{s}\n", .{ err, err_str });
+                std.log.debug("err code {}.\n{s}\n", .{ err, err_str });
                 err = c.ERR_get_error();
             }
 
@@ -199,7 +199,7 @@ pub const X509 = struct {
                 return OpenSSLKey{ .ECDSA = .{ .key = inner_key.? } };
             },
             else => {
-                std.debug.print("Key type is {}\n", .{c.EVP_PKEY_base_id(inner_key)});
+                std.log.debug("Key type is {}\n", .{c.EVP_PKEY_base_id(inner_key)});
                 return error.WrongPubKey;
             },
         }
@@ -452,15 +452,15 @@ pub const OpenSSLKey = union(KeyType) {
 
                 // +1 for the multibase prefix
                 var x = try no_padding_encoding.decode(buf[0..], peer_id[1..]);
-                std.debug.print("x is {any}\n", .{x});
-                std.debug.print("peer id is {s}\n", .{peer_id[1..]});
-                std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
+                std.log.debug("x is {any}\n", .{x});
+                std.log.debug("peer id is {s}\n", .{peer_id[1..]});
+                std.log.debug("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
                 {
                     var l2 = no_padding_encoding.decodeLen(peer_id[1..].len);
                     var buf2 = buf[0..l2];
                     var x2 = try no_padding_encoding.decode(buf2[0..], peer_id[1..]);
-                    std.debug.print("x is {any}\n", .{x2});
-                    std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf2[0..])});
+                    std.log.debug("x is {any}\n", .{x2});
+                    std.log.debug("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf2[0..])});
                 }
 
                 var bufToDecode: []const u8 = undefined;
@@ -469,10 +469,10 @@ pub const OpenSSLKey = union(KeyType) {
                     // bufToDecode = buf[0..];
 
                     // Hack, the above wasn't working with go-libp2p. Need to look into this
-                    std.debug.print("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
+                    std.log.debug("Key is {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..])});
                     return try OpenSSLKey.ED25519KeyPair.PublicKey.initFromRaw(buf[4..]);
                 } else if (buf[0] != 0x01 or buf[1] != 0x72 or buf[2] != 0x00) {
-                    std.debug.print("Header bytes are: {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..4])});
+                    std.log.debug("Header bytes are: {s}\n", .{std.fmt.fmtSliceHexLower(buf[0..4])});
                     return error.NotProperlyEncoded;
                 } else {
                     // The key should be read starting at the 5th byte to remove the cid/multicodec/multihash
@@ -824,7 +824,7 @@ pub const Key = union(KeyType) {
                     break :blk PbField{ .bytes = buffer[i .. i + field_len.value] };
                 },
                 else => {
-                    std.debug.print("Unknown field tag {}\n", .{field_tag});
+                    std.log.debug("Unknown field tag {}\n", .{field_tag});
                     return error.UnsupportedFieldTag;
                 },
             };
@@ -834,7 +834,7 @@ pub const Key = union(KeyType) {
             } else if (field_num == 2 and field_val == .bytes) {
                 key_bytes = field_val.bytes;
             } else {
-                std.debug.print("Field num is {} and field_val is {any}", .{ field_num, field_val });
+                std.log.debug("Field num is {} and field_val is {any}", .{ field_num, field_val });
                 return error.UnknownPB;
             }
         }
@@ -874,7 +874,7 @@ pub const Libp2pTLSCert = struct {
     const extension_byte_size = tag_size + length_size + tag_size + length_size + OpenSSLKey.ED25519KeyPair.PublicKey.pb_encoded_len + tag_size + length_size + OpenSSLKey.ED25519KeyPair.Signature.Len;
 
     pub fn insertExtension(x509: X509, serialized_libp2p_extension: [extension_byte_size]u8) !void {
-        std.debug.print("\n\n serialized libp2p extension {s}\n\n", .{std.fmt.fmtSliceHexLower(serialized_libp2p_extension[0..])});
+        std.log.debug("\n\n serialized libp2p extension {s}\n\n", .{std.fmt.fmtSliceHexLower(serialized_libp2p_extension[0..])});
         try x509.insertLibp2pExtension(serialized_libp2p_extension[0..]);
     }
 
@@ -938,7 +938,7 @@ pub const Libp2pTLSCert = struct {
         defer {
             _ = c.OPENSSL_sk_pop_free(c.ossl_check_ASN1_TYPE_sk_type(seq), c.ossl_check_ASN1_TYPE_freefunc_type(c.ASN1_TYPE_free));
         }
-        std.debug.print("here {any}\n", .{seq});
+        std.log.debug("here {any}\n", .{seq});
         // var item = c.ASN1_ITEM_get(0);
         var maybe_octet_str = c.sk_ASN1_TYPE_shift(seq);
         defer c.ASN1_TYPE_free(maybe_octet_str);
@@ -969,14 +969,14 @@ pub const Libp2pTLSCert = struct {
         // // var seq_len = c.d2i_ASN1_INTEGER(null, &buf_ptr, @intCast(c_long, buffer.len - 1));
         // // var seq_len_int: i64 = 0;
         // // var status = c.ASN1_INTEGER_get_int64(&seq_len_int, seq_len);
-        // // std.debug.print("here {any} {any} {}\n", .{ seq_len, seq_len_int, status });
+        // // std.log.debug("here {any} {any} {}\n", .{ seq_len, seq_len_int, status });
 
         // if (buffer[0] != sequence_tag) {
         //     return error.MalformedExtension;
         // }
 
         // if (buffer[2] != octet_tag) {
-        //     std.debug.print("\n\n!!!!HERE\n\n{s}\n\n", .{std.fmt.fmtSliceHexLower(buffer)});
+        //     std.log.debug("\n\n!!!!HERE\n\n{s}\n\n", .{std.fmt.fmtSliceHexLower(buffer)});
         //     // return error.MalformedExtension;
         // }
 
@@ -1016,7 +1016,7 @@ pub const Libp2pTLSCert = struct {
 
         var k = try Key.deserializePb(libp2p_decoded.host_pubkey_bytes);
 
-        // std.debug.print("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
+        // std.log.debug("\n key is {s}\n", .{std.fmt.fmtSliceHexLower(k.key_bytes)});
         var host_pub_key = try OpenSSLKey.ED25519KeyPair.PublicKey.initFromKey(k);
         defer host_pub_key.deinit();
 
@@ -1044,7 +1044,7 @@ test "Generate Key, and more" {
 
     var buf = [_]u8{0} ** 1024;
     const bytes_read = try pkcs12.read(buf[0..]);
-    std.debug.print("Read {} bytes.\n", .{bytes_read});
+    std.log.debug("Read {} bytes.\n", .{bytes_read});
     try std.testing.expect(bytes_read > 0);
 }
 
@@ -1071,7 +1071,7 @@ test "Sign and Verify" {
     defer kp.deinit();
 
     var sig = try kp.sign(msg[0..]);
-    std.debug.print("\n Sig is {s}\n", .{std.fmt.fmtSliceHexLower(sig.sig[0..])});
+    std.log.debug("\n Sig is {s}\n", .{std.fmt.fmtSliceHexLower(sig.sig[0..])});
 
     try std.testing.expect(try sig.verify(OpenSSLKey.ED25519KeyPair.PublicKey{ .key = kp.key }, msg[0..]));
 
@@ -1086,10 +1086,10 @@ test "libp2p extension" {
 
     const pk = OpenSSLKey.ED25519KeyPair.PublicKey{ .key = kp.key };
     const encoded = pk.derEncoding();
-    std.debug.print("\n Encoded is {encoded}\n", .{std.fmt.fmtSliceHexLower(encoded[0..])});
+    std.log.debug("\n Encoded is {encoded}\n", .{std.fmt.fmtSliceHexLower(encoded[0..])});
 
     const libp2p_encoded = pk.libp2pExtension();
-    std.debug.print("\n Encoded is {s}\n", .{std.fmt.fmtSliceHexLower(libp2p_encoded[0..])});
+    std.log.debug("\n Encoded is {s}\n", .{std.fmt.fmtSliceHexLower(libp2p_encoded[0..])});
 }
 
 test "make cert" {
@@ -1131,7 +1131,7 @@ test "To PeerID string" {
     const allocator = std.testing.allocator;
     const peer_id_str = try peer_id.toString(allocator);
     defer allocator.free(peer_id_str);
-    std.debug.print("Peer id {s}\n", .{peer_id_str});
+    std.log.debug("Peer id {s}\n", .{peer_id_str});
 }
 
 test "Round trip peer id" {
