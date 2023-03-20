@@ -250,7 +250,7 @@ const TestPerfStreamContext = struct {
         return .{
             .allocator = allocator,
             .stream_handle = stream,
-            .perf = try HandlerWithMSS.init(allocator, perf, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
+            .perf = try HandlerWithMSS.init(perf, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
             .test_env = test_env,
             .msquic = msquic,
         };
@@ -343,7 +343,7 @@ pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial
     // Wait for perf to finish
     client.test_env.done_semaphore.wait();
 
-    log.info("Shutting down!!!", .{});
+    log.info("Shutting down", .{});
 }
 
 test "Perf protocol" {

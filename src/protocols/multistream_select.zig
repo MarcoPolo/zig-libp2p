@@ -67,7 +67,6 @@ pub const Handler = struct {
     };
 
     pub fn init(
-        allocator: Allocator,
         eventHandler: EventHandler,
         msquic: *MsQuic.QUIC_API_TABLE,
         stream_handle: MsQuic.HQUIC,
@@ -75,7 +74,6 @@ pub const Handler = struct {
         supported_protos: [][]const u8,
         initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
     ) Handler {
-        _ = allocator;
         return Handler{
             .eventHandler = eventHandler,
             .msquic = msquic,
@@ -387,7 +385,6 @@ const TestMSSStreamContext = struct {
     ) error{OutOfMemory}!TestMSSStreamContext {
         var protos = [_][]const u8{"test"};
         return .{
-            .allocator = allocator,
             .stream_handle = stream,
             .mss = Handler.init(
                 allocator,
@@ -449,7 +446,6 @@ pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
         wrapped: WrappedHandler,
 
         pub fn init(
-            allocator: Allocator,
             wrappedHandler: WrappedHandler,
             msquic: *MsQuic.QUIC_API_TABLE,
             stream_handle: MsQuic.HQUIC,
@@ -460,7 +456,6 @@ pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
             return .{
                 .wrapped = wrappedHandler,
                 .mss = Handler.init(
-                    allocator,
                     Self.handleMSSEvent,
                     msquic,
                     stream_handle,

@@ -2,7 +2,7 @@ pub const crypto = @import("./crypto.zig");
 pub const multiaddr = @import("./multiaddr.zig");
 pub const util = struct {
     pub usingnamespace @import("./util/memory_pool.zig");
-    pub const testutil = @import("./util/test_util.zig");
+    pub const test_util = @import("./util/test_util.zig");
 };
 
 pub const protocols = struct {
@@ -20,7 +20,8 @@ pub const alpn = MsQuic.QUIC_BUFFER{
 };
 
 test {
-    _ = util.testutil;
+    _ = util.test_util;
     _ = protocols.perf;
+    _ = protocols.ping;
     _ = protocols.mss;
 }

@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
+const mss = @import("../libp2p.zig").protocols.mss;
 
 var rng = std.rand.DefaultPrng.init(0);
 const random = rng.random();
@@ -11,8 +12,6 @@ const random = rng.random();
 pub const id = "/ipfs/ping/1.0.0";
 
 pub const Event = union(enum) {
-    // TODO, we can remove this
-    ready: void,
     ping_response_received: u64, // Duration
 };
 
@@ -208,3 +207,87 @@ pub const Handler = struct {
         // TODO
     }
 };
+
+pub const HandlerWithMSS = mss.WrapHandlerWithMSS(Handler);
+
+const TestEnv = @import("../util/test_util.zig").TestEnv(void);
+pub const TestPingStreamContext = struct {
+    allocator: Allocator,
+    stream_handle: MsQuic.HQUIC,
+    ping: HandlerWithMSS,
+    test_env: *TestEnv,
+    pub fn init(
+        allocator: Allocator,
+        msquic: *MsQuic.QUIC_API_TABLE,
+        stream: MsQuic.HQUIC,
+        is_initiator: bool,
+        quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        test_env: *TestEnv,
+    ) error{OutOfMemory}!TestPingStreamContext {
+        log.debug("Creating ping stream context", .{});
+        const pingHandler = Handler.init(TestPingStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool);
+
+        var supported_protos = [_][]const u8{id};
+        return .{
+            .allocator = allocator,
+            .stream_handle = stream,
+            .ping = try HandlerWithMSS.init(pingHandler, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
+            .test_env = test_env,
+        };
+    }
+
+    pub fn deinit(self: *TestPingStreamContext) void {
+        self.allocator.destroy(self);
+        self.ping.deinit();
+    }
+
+    pub fn initiateMSS(self: *TestPingStreamContext, stream_handle: MsQuic.HQUIC, proto: []const u8) !void {
+        self.ping.initiateMSS(stream_handle, proto);
+    }
+
+    pub fn handleEvent(self: *TestPingStreamContext, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
+        switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                self.deinit();
+                return .Success;
+            },
+            else => {
+                return try self.ping.handleEvent(stream, event);
+            },
+        }
+    }
+
+    pub fn handlePingEvent(handler: *Handler, _: MsQuic.HQUIC, event: Event) MsQuic.QUIC_STATUS {
+        switch (event) {
+            .ping_response_received => |dur| {
+                log.info("Ping response received: {} microseconds", .{dur / 1000});
+                const pingWithMSS = @fieldParentPtr(HandlerWithMSS, "wrapped", handler);
+                const self = @fieldParentPtr(TestPingStreamContext, "ping", pingWithMSS);
+                self.test_env.done_semaphore.post();
+            },
+        }
+        return QuicStatus.Success;
+    }
+};
+
+test "Run test node with ping" {
+    // std.testing.log_level = .debug;
+    std.testing.log_level = .info;
+
+    const test_util = @import("../util/test_util.zig");
+    const TestNode = @import("../util/test_util.zig").TestNode;
+    const Node = TestNode(TestPingStreamContext, void, TestPingStreamContext.init);
+    const Semaphore = std.Thread.Semaphore;
+
+    const allocator = std.testing.allocator;
+
+    var shutdown_listener_sem: Semaphore = .{};
+    var listener_multiaddr_semaphore: Semaphore = .{};
+    var listener_multiaddr: []const u8 = undefined;
+
+    var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+    try test_util.runDialer(allocator, Node, id, &listener_multiaddr, &listener_multiaddr_semaphore);
+
+    shutdown_listener_sem.post();
+    listener_thread.join();
+}

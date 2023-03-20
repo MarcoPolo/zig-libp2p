@@ -124,7 +124,7 @@ pub fn buildTests(b: *std.build.Builder, allocator: Allocator, mode: std.builtin
         }, .dependencies = &[_]std.build.Pkg{.{
             .name = "msquic",
             .source = .{
-                .path = "zig-msquic/src/msquic_wrapper.zig",
+                .path = "zig-msquic/src/msquic.zig",
             },
         }} });
 
@@ -149,13 +149,13 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
 
     // Add packages and link
     inline for (.{ interop, interop_test }) |step| {
-        try msquic_builder.linkMsquic(allocator, target, step, false);
+        try msquic_builder.linkMsquic(allocator, target, step, true);
         try includeLibSystemFromNix(allocator, step);
 
         step.addPackage(std.build.Pkg{
             .name = "msquic",
             .source = .{
-                .path = "zig-msquic/src/msquic_wrapper.zig",
+                .path = "zig-msquic/src/msquic.zig",
             },
         });
 
@@ -171,7 +171,7 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
         }, .dependencies = &[_]std.build.Pkg{.{
             .name = "msquic",
             .source = .{
-                .path = "zig-msquic/src/msquic_wrapper.zig",
+                .path = "zig-msquic/src/msquic.zig",
             },
         }} });
         step.addPackage(std.build.Pkg{
@@ -179,12 +179,23 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
             .source = .{
                 .path = "src/libp2p.zig",
             },
-            .dependencies = &[_]std.build.Pkg{.{
+            .dependencies = &[_]std.build.Pkg{ .{
+                .name = "libp2p-msquic",
+                .source = .{
+                    .path = "src/msquic.zig",
+                },
+                .dependencies = &[_]std.build.Pkg{.{
+                    .name = "msquic",
+                    .source = .{
+                        .path = "zig-msquic/src/msquic.zig",
+                    },
+                }},
+            }, .{
                 .name = "msquic",
                 .source = .{
-                    .path = "zig-msquic/src/msquic_wrapper.zig",
+                    .path = "zig-msquic/src/msquic.zig",
                 },
-            }},
+            } },
         });
 
         step.setBuildMode(mode);
