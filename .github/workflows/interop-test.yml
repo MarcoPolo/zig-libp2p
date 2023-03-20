@@ -10,6 +10,7 @@ on:
 
 jobs:
   run-multidim-interop:
+    timeout-minutes: 45
     name: Run multidimensional interoperability tests
     runs-on: ubuntu-22.04
     steps:
