@@ -427,6 +427,18 @@ pub fn TestNode(
                             return MsQuic.QuicStatus.InternalError;
                         };
                         defer peer_key.deinit(self.allocator);
+                        var peer_id = peer_key.toPeerID();
+                        var peer_id_legacy = peer_id.Ed25519.toLegacyString(self.allocator) catch |err| {
+                            std.debug.print("conn={any} Failed to get peer ID: {any}\n", .{ connection, err });
+                            self.msquic.ConnectionShutdown.?(connection, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, 0);
+                            return MsQuic.QuicStatus.InternalError;
+                        };
+
+                        defer self.allocator.free(peer_id_legacy);
+                        log.debug(
+                            "Peer is {s}",
+                            .{peer_id_legacy},
+                        );
                     },
                     else => {},
                 }
@@ -479,6 +491,18 @@ pub fn TestNode(
                         return MsQuic.QuicStatus.InternalError;
                     };
                     defer peer_key.deinit(self.allocator);
+                    var peer_id = peer_key.toPeerID();
+                    var peer_id_legacy = peer_id.Ed25519.toLegacyString(self.allocator) catch |err| {
+                        std.debug.print("conn={any} Failed to get peer ID: {any}\n", .{ connection, err });
+                        self.msquic.ConnectionShutdown.?(connection, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, 0);
+                        return MsQuic.QuicStatus.InternalError;
+                    };
+
+                    defer self.allocator.free(peer_id_legacy);
+                    log.debug(
+                        "Peer is {s}",
+                        .{peer_id_legacy},
+                    );
                 },
                 else => {},
             }
@@ -516,6 +540,7 @@ pub fn runListener(allocator: Allocator, comptime Node: anytype, ip: [:0]const u
     defer listener.deinit();
     const serverPeerID = try (try server.host_key.toPubKey().toPeerID()).Ed25519.toLegacyString(allocator);
     defer allocator.free(serverPeerID);
+    log.debug("Listener peer id is {s}", .{serverPeerID});
 
     var listener_multiaddr_string: ?[]const u8 = null;
     for (listener.listening_addrs.items) |addr| {

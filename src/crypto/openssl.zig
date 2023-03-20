@@ -724,7 +724,7 @@ pub const Key = union(KeyType) {
     }
 
     pub fn toPeerID(self: *const Key) PeerID {
-        switch (self) {
+        switch (self.*) {
             .Ed25519 => {
                 return .{ .Ed25519 = .{ .pub_key_bytes = self.Ed25519.key_bytes } };
             },
@@ -734,7 +734,7 @@ pub const Key = union(KeyType) {
         }
     }
 
-    fn toPeerIDString(self: Key, allocator: Allocator) ![]u8 {
+    pub fn toPeerIDString(self: Key, allocator: Allocator) ![]u8 {
         switch (self) {
             .Ed25519 => {
                 var pub_key = try OpenSSLKey.ED25519KeyPair.PublicKey.initFromKey(self);
@@ -938,8 +938,7 @@ pub const Libp2pTLSCert = struct {
         defer {
             _ = c.OPENSSL_sk_pop_free(c.ossl_check_ASN1_TYPE_sk_type(seq), c.ossl_check_ASN1_TYPE_freefunc_type(c.ASN1_TYPE_free));
         }
-        std.log.debug("here {any}\n", .{seq});
-        // var item = c.ASN1_ITEM_get(0);
+
         var maybe_octet_str = c.sk_ASN1_TYPE_shift(seq);
         defer c.ASN1_TYPE_free(maybe_octet_str);
 
@@ -961,42 +960,6 @@ pub const Libp2pTLSCert = struct {
 
         var extension_data = try allocator.alloc(u8, octet_str_len);
         std.mem.copy(u8, extension_data, octet_str_slice);
-
-        // // var seq_item: c.ASN1_ITEM = undefined;
-        // // c.ASN1_SEQUENCE_ANY_unpack_sequence(&seq_item, )
-
-        // // buf_ptr = buffer.ptr + 1;
-        // // var seq_len = c.d2i_ASN1_INTEGER(null, &buf_ptr, @intCast(c_long, buffer.len - 1));
-        // // var seq_len_int: i64 = 0;
-        // // var status = c.ASN1_INTEGER_get_int64(&seq_len_int, seq_len);
-        // // std.log.debug("here {any} {any} {}\n", .{ seq_len, seq_len_int, status });
-
-        // if (buffer[0] != sequence_tag) {
-        //     return error.MalformedExtension;
-        // }
-
-        // if (buffer[2] != octet_tag) {
-        //     std.log.debug("\n\n!!!!HERE\n\n{s}\n\n", .{std.fmt.fmtSliceHexLower(buffer)});
-        //     // return error.MalformedExtension;
-        // }
-
-        // var pk_len = buffer[3];
-        // if (pk_len >> 7 == 1) {
-        //     // TODO this doesn't take into account any lens > 127
-        //     return error.PkLenTooLong;
-        // }
-        // var pk_bytes = buffer[4..][0..pk_len];
-
-        // if (buffer[4 + pk_len] != octet_tag) {
-        //     // return error.MalformedExtension;
-        // }
-
-        // var ext_len = buffer[5 + pk_len];
-        // if (ext_len >> 7 == 1) {
-        //     // TODO this doesn't take into account any lens > 127
-        //     return error.ExtLenTooLong;
-        // }
-        // var ext_bytes = buffer[6 + pk_len ..][0..ext_len];
 
         return DeserializedParts{
             .allocator = allocator,

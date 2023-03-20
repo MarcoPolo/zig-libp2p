@@ -36,7 +36,7 @@ pub const CredentialConfigHelper = struct {
         self.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
         self.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
         // We do the cert validation ourselves with https://github.com/libp2p/specs/blob/master/tls/tls.md
-        self.cred_config.Flags = MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+        self.cred_config.Flags |= MsQuic.QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
     }
 };
 
