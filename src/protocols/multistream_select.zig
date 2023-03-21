@@ -6,7 +6,8 @@ const MsQuic = @import("msquic");
 const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
 
-const multistream_protocol_id_with_newline = "/multistream/1.0.0\n";
+const multistream_protocol_id_with_newline_no_len = "/multistream/1.0.0\n";
+const multistream_protocol_id_with_newline = [1]u8{@as(u8, multistream_protocol_id_with_newline_no_len.len)} ++ "/multistream/1.0.0\n";
 const na_with_newline = "na\n";
 
 pub const MultistreamEventType = enum {
@@ -38,6 +39,7 @@ fn layoutExpectedBuf() [1024]u8 {
 pub const Handler = struct {
     recv_buf: [1024]u8 = [_]u8{0} ** 1024,
     recv_buf_end_idx: u32 = 0,
+    size_buf: [1]u8 = [_]u8{0} ** 1,
 
     expected_buf: [1024]u8 = layoutExpectedBuf(),
     expected_len: u16 = 0,
@@ -110,16 +112,14 @@ pub const Handler = struct {
 
     pub fn initiateMSS(self: *Handler, stream: MsQuic.HQUIC, proto: []const u8) !void {
         self.negotiated_proto = proto;
-        var send_status = try self.delayedSend(stream, multistream_protocol_id_with_newline);
-        log.debug("Sent first MSS message initiator={} status={}", .{ self.is_initiator, send_status });
-        send_status = try self.delayedSend(stream, proto);
-        log.debug("Sent proto MSS message initiator={} status={}", .{ self.is_initiator, send_status });
-        send_status = try self.delayedSend(stream, "\n");
-        log.debug("Sent proto MSS newline message initiator={} status={}", .{ self.is_initiator, send_status });
+        // TODO this only supports protos that are <126 chars long
+        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len..], &[_]u8{@intCast(u8, proto.len + 1)});
+        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len + 1 ..], proto);
+        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len + 1 + proto.len ..], "\n");
+        self.expected_len = @intCast(u16, multistream_protocol_id_with_newline.len + 1 + proto.len + 1);
 
-        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len..], proto);
-        std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len + proto.len ..], "\n");
-        self.expected_len = @intCast(u16, multistream_protocol_id_with_newline.len + proto.len + 1);
+        var send_status = try self.delayedSend(stream, self.expected_buf[0..self.expected_len]);
+        log.debug("Sent first MSS message initiator={} status={} sent={s}", .{ self.is_initiator, send_status, self.expected_buf[0..self.expected_len] });
 
         self.state = .optimistically_negotiated;
         self.eventHandler(self, stream, .{ .optimistically_negotiated = proto });
@@ -170,6 +170,7 @@ pub const Handler = struct {
 
                     if (self.expected_len != self.recv_buf_end_idx) {
                         log.debug("Didn't get the full MSS message. Missing {} bytes. {s}", .{ self.expected_len - self.recv_buf_end_idx, self.expected_buf[self.recv_buf_end_idx..self.expected_len] });
+                        log.debug("Received: {s}. Total buffer len {}", .{ self.recv_buf[0..self.recv_buf_end_idx], event.*.unnamed_0.RECEIVE.TotalBufferLength });
                         if (consumed_bytes < event.*.unnamed_0.RECEIVE.TotalBufferLength) {
                             event.*.unnamed_0.RECEIVE.TotalBufferLength = consumed_bytes;
                             return .Continue;
@@ -187,7 +188,8 @@ pub const Handler = struct {
                         }
                         return .Success;
                     } else {
-                        log.err("MSS message didn't match expected proto. {s}", .{self.expected_buf[0..self.expected_len]});
+                        log.err("MSS message didn't match expected proto. {s}", .{std.fmt.fmtSliceHexLower(self.expected_buf[0..self.expected_len])});
+                        log.err("MSS message got                   proto. {s}", .{std.fmt.fmtSliceHexLower(self.recv_buf[0..self.recv_buf_end_idx])});
                         self.state = .failed;
                         self.eventHandler(self, stream, .{ .failed = {} });
                         return .Success;
@@ -263,7 +265,8 @@ pub const Handler = struct {
                             self.recv_buf_end_idx += @intCast(u32, slice.len);
                             consumed_bytes += @intCast(u32, slice.len);
 
-                            const requested_proto = self.recv_buf[multistream_protocol_id_with_newline.len .. self.recv_buf_end_idx - 1];
+                            // TODO fix this hack (we add 1 for the varint len prefix)
+                            const requested_proto = self.recv_buf[multistream_protocol_id_with_newline.len + 1 .. self.recv_buf_end_idx - 1];
                             log.debug("initiator requests proto={s}", .{requested_proto});
                             for (self.supported_protos) |proto| {
                                 if (std.mem.eql(u8, requested_proto, proto)) {
@@ -302,6 +305,13 @@ pub const Handler = struct {
                         self.state = .optimistically_negotiated; // Optimistic because we haven't finished our send yet.
                         self.eventHandler(self, stream, .{ .negotiated = negotiated_proto });
                         _ = delayedSend(self, stream, multistream_protocol_id_with_newline) catch {
+                            self.state = .failed;
+                            self.eventHandler(self, stream, .{ .failed = {} });
+                            log.debug("Out of memory initiator={}", .{self.is_initiator});
+                            return QuicStatus.EventHandlerError.OutOfMemory;
+                        };
+                        self.size_buf[0] = @intCast(u8, negotiated_proto.len + 1);
+                        _ = delayedSend(self, stream, &self.size_buf) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
