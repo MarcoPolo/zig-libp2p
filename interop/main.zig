@@ -17,10 +17,6 @@ const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;
 
-const ifaddrs = @cImport({
-    @cInclude("ifaddrs.h");
-});
-
 const stdout = std.io.getStdOut();
 
 const TestEnv = libp2p.util.test_util.TestEnv(void);

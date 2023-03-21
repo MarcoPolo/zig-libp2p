@@ -54,6 +54,11 @@ pub const Handler = struct {
     pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
         log.debug("Ping handling event: initiator={} state={} from={any} {}\n", .{ self.is_initiator, self.state, stream, event.*.Type });
         switch (event.*.Type) {
+            MsQuic.QUIC_STREAM_EVENT_START_COMPLETE => {
+                self.start_time = std.time.Instant.now() catch {
+                    @panic("no time");
+                };
+            },
             MsQuic.QUIC_STREAM_EVENT_RECEIVE => {
                 const buffers = event.*.unnamed_0.RECEIVE;
                 if (self.is_initiator) {
