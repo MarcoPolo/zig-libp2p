@@ -138,7 +138,8 @@ pub fn main() anyerror!void {
 }
 
 test "ping interop" {
-    std.testing.log_level = .info;
+    // std.testing.log_level = .info;
+    std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
 
     var shutdown_listener_sem: Semaphore = .{};

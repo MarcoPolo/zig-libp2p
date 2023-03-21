@@ -7,8 +7,11 @@ const QuicStatus = MsQuic.QuicStatus;
 const MemoryPool = @import("../libp2p.zig").util.MemoryPool;
 
 const multistream_protocol_id_with_newline_no_len = "/multistream/1.0.0\n";
-const multistream_protocol_id_with_newline = [1]u8{@as(u8, multistream_protocol_id_with_newline_no_len.len)} ++ "/multistream/1.0.0\n";
-const na_with_newline = "na\n";
+const multistream_protocol_id_with_newline = [1]u8{@as(u8, multistream_protocol_id_with_newline_no_len.len)} ++ multistream_protocol_id_with_newline_no_len;
+const na_with_newline_no_len = "na\n";
+const na_with_newline = [1]u8{@as(u8, na_with_newline_no_len.len)} ++ na_with_newline_no_len;
+
+// TODO send na
 
 pub const MultistreamEventType = enum {
     // We have successfully negotiated a protocol. Caller may stop sending events to MultistreamSelect.
@@ -280,6 +283,18 @@ pub const Handler = struct {
                             } else {
                                 log.debug("initiator requests proto={s} and we don't support it", .{requested_proto});
                                 self.state = .failed;
+                                _ = delayedSend(self, stream, multistream_protocol_id_with_newline) catch {
+                                    self.state = .failed;
+                                    self.eventHandler(self, stream, .{ .failed = {} });
+                                    log.debug("Out of memory initiator={}", .{self.is_initiator});
+                                    return QuicStatus.EventHandlerError.OutOfMemory;
+                                };
+                                _ = delayedSend(self, stream, na_with_newline) catch {
+                                    self.state = .failed;
+                                    self.eventHandler(self, stream, .{ .failed = {} });
+                                    log.debug("Out of memory initiator={}", .{self.is_initiator});
+                                    return QuicStatus.EventHandlerError.OutOfMemory;
+                                };
                                 self.eventHandler(self, stream, .{ .failed = {} });
                                 // TODO close?
                                 return QuicStatus.EventHandlerError.InternalError;
