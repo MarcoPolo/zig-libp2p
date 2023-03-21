@@ -3,7 +3,7 @@
 pkgs.clangStdenv.mkDerivation rec {
   pname = "libmsquic";
   # version = "12681935c22129d72efafa0cb7ddb375cfde2de8";
-  version = "2.1.8";
+  version = "v2.1.8";
   src = fetchFromGitHub {
     fetchSubmodules = true;
     owner = "microsoft";
