@@ -83,7 +83,6 @@ pub const InteropStreamContext = struct {
                 };
                 const self = @fieldParentPtr(InteropStreamContext, "ping", ping.HandlerWithMSS.getParentPtrFromWrappedHandler(handler));
                 const durSinceStart = @intToFloat(f32, now.since(self.start_time)) / std.time.ns_per_ms;
-                _ = stdout_writer.write("bytes: []const u8") catch unreachable;
                 stdout_writer.print("{{\"handshakePlusOneRTTMillis\": {d:.3}, \"pingRTTMilllis\": {d:.3}}}\n", .{ durSinceStart, durMs }) catch unreachable;
                 self.test_env.done_semaphore.post();
             },
@@ -138,8 +137,8 @@ pub fn main() anyerror!void {
 }
 
 test "ping interop" {
-    // std.testing.log_level = .info;
-    std.testing.log_level = .debug;
+    std.testing.log_level = .info;
+    // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
 
     var shutdown_listener_sem: Semaphore = .{};
