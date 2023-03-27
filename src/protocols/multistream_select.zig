@@ -216,7 +216,7 @@ pub const Handler = struct {
                                 const slice = buf[0 .. idx_of_newline + 1];
                                 if (slice.len + self.recv_buf_end_idx > multistream_protocol_id_with_newline.len) {
                                     self.state = .failed;
-                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, slice });
+                                    log.err("Got back a bad multistream protocol id: initiator={} len={} {s}", .{ self.is_initiator, slice.len, slice });
                                     self.eventHandler(self, stream, .{ .failed = {} });
                                     // TODO close?
                                     return QuicStatus.EventHandlerError.InternalError;
@@ -231,7 +231,8 @@ pub const Handler = struct {
                                     log.debug("Got back the multistream protocol id: initiator={}", .{self.is_initiator});
                                     self.got_back_ms = true;
                                 } else {
-                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, self.recv_buf[0..self.recv_buf_end_idx] });
+                                    log.err("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, self.recv_buf[0..self.recv_buf_end_idx] });
+                                    self.state = .failed;
                                     self.eventHandler(self, stream, .{ .failed = {} });
                                     // TODO close?
                                     return QuicStatus.EventHandlerError.InternalError;
@@ -240,7 +241,7 @@ pub const Handler = struct {
                                 // Copy the whole buffer
                                 if (buf.len > multistream_protocol_id_with_newline.len) {
                                     self.state = .failed;
-                                    log.debug("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, buf });
+                                    log.err("Got back a bad multistream protocol id: initiator={} {s}", .{ self.is_initiator, buf });
                                     self.eventHandler(self, stream, .{ .failed = {} });
                                     // TODO close?
                                     return QuicStatus.EventHandlerError.InternalError;
@@ -259,7 +260,7 @@ pub const Handler = struct {
                             const slice = buf[0 .. idx_of_newline + 1];
                             if (slice.len > space_avail) {
                                 self.state = .failed;
-                                log.debug("Got back too much in mss: initiator={}", .{self.is_initiator});
+                                log.err("Got back too much in mss: initiator={}", .{self.is_initiator});
                                 self.eventHandler(self, stream, .{ .failed = {} });
                                 // TODO close?
                                 return QuicStatus.EventHandlerError.InternalError;
@@ -303,7 +304,7 @@ pub const Handler = struct {
                             // Copy the whole buffer
                             if (buf.len > space_avail) {
                                 self.state = .failed;
-                                log.debug("Missing protocol id in MSS: initiator={} {s}", .{ self.is_initiator, buf });
+                                log.err("Missing protocol id in MSS: initiator={} {s} (No more space in buf)", .{ self.is_initiator, buf });
                                 self.eventHandler(self, stream, .{ .failed = {} });
                                 // TODO close?
                                 return QuicStatus.EventHandlerError.InternalError;
