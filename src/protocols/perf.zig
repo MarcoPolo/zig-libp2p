@@ -224,6 +224,7 @@ pub const Handler = struct {
 const HandlerWithMSS = mss.WrapHandlerWithMSS(Handler);
 
 const TestEnv = @import("../util/test_util.zig").TestEnv(TestMeta);
+var test_supported_protos = [_][]const u8{id};
 const TestPerfStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
@@ -246,11 +247,10 @@ const TestPerfStreamContext = struct {
             test_env.*.meta.upload_size_bytes,
             test_env.*.meta.download_size_bytes,
         );
-        var supported_protos = [_][]const u8{id};
         return .{
             .allocator = allocator,
             .stream_handle = stream,
-            .perf = try HandlerWithMSS.init(perf, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
+            .perf = try HandlerWithMSS.init(perf, msquic, stream, is_initiator, &test_supported_protos, quic_buffer_pool),
             .test_env = test_env,
             .msquic = msquic,
         };
@@ -325,7 +325,7 @@ pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial
 
     log.info("Starting Upload test", .{});
     client.test_env.meta = .{
-        .upload_size_bytes = 1 << 20,
+        .upload_size_bytes = 10 << 20,
         .download_size_bytes = 0,
     };
     _ = try client.startStream(stream_and_conn.conn, id);
@@ -335,7 +335,7 @@ pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial
     log.info("Starting Download test", .{});
     client.test_env.meta = .{
         .upload_size_bytes = 0,
-        .download_size_bytes = 1 << 20,
+        .download_size_bytes = 10 << 20,
     };
     _ = try client.startStream(stream_and_conn.conn, id);
     // Wait for perf to finish
