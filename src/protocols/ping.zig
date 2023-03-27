@@ -216,6 +216,7 @@ pub const Handler = struct {
 pub const HandlerWithMSS = mss.WrapHandlerWithMSS(Handler);
 
 const TestEnv = @import("../util/test_util.zig").TestEnv(void);
+var test_supported_protos = [_][]const u8{id};
 pub const TestPingStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
@@ -232,11 +233,10 @@ pub const TestPingStreamContext = struct {
         log.debug("Creating ping stream context", .{});
         const pingHandler = Handler.init(TestPingStreamContext.handlePingEvent, msquic, is_initiator, quic_buffer_pool);
 
-        var supported_protos = [_][]const u8{id};
         return .{
             .allocator = allocator,
             .stream_handle = stream,
-            .ping = try HandlerWithMSS.init(pingHandler, msquic, stream, is_initiator, &supported_protos, quic_buffer_pool),
+            .ping = try HandlerWithMSS.init(pingHandler, msquic, stream, is_initiator, &test_supported_protos, quic_buffer_pool),
             .test_env = test_env,
         };
     }
