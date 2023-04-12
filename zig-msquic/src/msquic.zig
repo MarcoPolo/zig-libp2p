@@ -37,6 +37,22 @@ pub fn connectionEventToString(conn_evt_typ: c_uint) []const u8 {
     };
 }
 
+pub fn streamEventToString(conn_evt_typ: c_uint) []const u8 {
+    return switch (conn_evt_typ) {
+        wrapper.QUIC_STREAM_EVENT_START_COMPLETE => "START_COMPLETE",
+        wrapper.QUIC_STREAM_EVENT_RECEIVE => "RECEIVE",
+        wrapper.QUIC_STREAM_EVENT_SEND_COMPLETE => "SEND_COMPLETE",
+        wrapper.QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN => "PEER_SEND_SHUTDOWN",
+        wrapper.QUIC_STREAM_EVENT_PEER_SEND_ABORTED => "PEER_SEND_ABORTED",
+        wrapper.QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED => "PEER_RECEIVE_ABORTED",
+        wrapper.QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE => "SEND_SHUTDOWN_COMPLETE",
+        wrapper.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => "SHUTDOWN_COMPLETE",
+        wrapper.QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE => "IDEAL_SEND_BUFFER_SIZE",
+        wrapper.QUIC_STREAM_EVENT_PEER_ACCEPTED => "PEER_ACCEPTED",
+        else => "UNKNOWN",
+    };
+}
+
 test {
     _ = @import("./perf/throughput_client.zig");
 }
