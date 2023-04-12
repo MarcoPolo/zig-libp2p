@@ -225,7 +225,7 @@ const HandlerWithMSS = mss.WrapHandlerWithMSS(Handler);
 
 const TestEnv = @import("../util/test_util.zig").TestEnv(TestMeta);
 var test_supported_protos = [_][]const u8{id};
-const TestPerfStreamContext = struct {
+pub const TestPerfStreamContext = struct {
     allocator: Allocator,
     stream_handle: MsQuic.HQUIC,
     perf: HandlerWithMSS,
@@ -290,7 +290,7 @@ const TestPerfStreamContext = struct {
     }
 };
 
-const TestMeta = struct {
+pub const TestMeta = struct {
     upload_size_bytes: u64,
     download_size_bytes: u64,
 };

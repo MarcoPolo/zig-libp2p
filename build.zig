@@ -194,6 +194,21 @@ pub fn addZigLibp2pPackages(allocator: Allocator, step: *std.build.LibExeObjStep
     step.setBuildMode(mode);
 }
 
+pub fn buildPerfExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget) anyerror!void {
+    const perf = b.addExecutable("perf", "examples/perf/main.zig");
+
+    // Add packages and link
+    try addZigLibp2pPackages(allocator, perf, mode, target);
+
+    const os = target.os_tag orelse builtin.os.tag;
+
+    const perf_step = b.step("perf", "Build perf binary");
+    perf_step.dependOn(try maybePatchElf(allocator, b, os, &b.addInstallArtifact(perf).step, perf.out_filename));
+
+    // const run_interop_step = b.step("run-interop", "Run interop");
+    // run_interop_step.dependOn(&interop.run().step);
+}
+
 pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget) anyerror!void {
     const ping = b.addExecutable("ping", "examples/ping/main.zig");
 
@@ -250,5 +265,6 @@ pub fn build(b: *std.build.Builder) anyerror!void {
     try addCryptoTestStep(allocator, b, mode, target, test_filter);
     try buildInterop(b, allocator, mode, target, test_filter);
     try buildPingExample(b, allocator, mode, target);
+    try buildPerfExample(b, allocator, mode, target);
     try buildTests(b, allocator, mode, target, test_filter);
 }

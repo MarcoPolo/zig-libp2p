@@ -509,7 +509,7 @@ pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
         }
 
         pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
-            log.debug("initiator={} MSS state={} handleEvent: {any}", .{ self.mss.is_initiator, self.mss.state, event.*.Type });
+            log.debug("initiator={} MSS state={} handleEvent: {s}", .{ self.mss.is_initiator, self.mss.state, MsQuic.streamEventToString(event.*.Type) });
             switch (self.mss.state) {
                 .done => {
                     // No more events need to be passed to MSS.
