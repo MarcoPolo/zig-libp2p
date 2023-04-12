@@ -276,8 +276,8 @@ pub const TestPingStreamContext = struct {
 };
 
 test "Run test node with ping" {
-    std.testing.log_level = .debug;
-    // std.testing.log_level = .info;
+    // std.testing.log_level = .debug;
+    std.testing.log_level = .info;
 
     const test_util = @import("../util/test_util.zig");
     const TestNode = @import("../util/test_util.zig").TestNode;
