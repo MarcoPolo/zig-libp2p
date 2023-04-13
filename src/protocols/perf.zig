@@ -284,6 +284,7 @@ pub const TestPerfStreamContext = struct {
             .done => |measurements| {
                 log.info("Done with perf: Duration={}", .{measurements.duration});
                 const self = @fieldParentPtr(TestPerfStreamContext, "perf", HandlerWithMSS.getParentPtrFromWrappedHandler(handler));
+                self.test_env.meta.perf_duration = measurements.duration;
                 self.test_env.done_semaphore.post();
             },
         }
@@ -293,6 +294,7 @@ pub const TestPerfStreamContext = struct {
 pub const TestMeta = struct {
     upload_size_bytes: u64,
     download_size_bytes: u64,
+    perf_duration: u64 = 0,
 };
 
 pub fn runTestDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial: []const u8, listener_multiaddr: *const []const u8, addr_semaphore: *std.Thread.Semaphore) !void {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const clap = @import("clap");
 const MsQuic = @import("msquic");
 const libp2p = @import("libp2p");
 const CredentialConfigHelper = @import("libp2p-msquic").crypto.CredentialConfigHelper;
@@ -6,36 +7,47 @@ const getPeerPubKey = @import("libp2p-msquic").crypto.getPeerPubKey;
 const multiaddr = libp2p.multiaddr;
 const log = std.log;
 const perf = libp2p.protocols.perf;
+const test_util = libp2p.util.test_util;
 const TestNode = libp2p.util.test_util.TestNode;
 
 const TestPerfStreamContext = perf.TestPerfStreamContext;
 
+const params = clap.parseParamsComptime(
+    \\--run-server              Run the server. 
+    \\--server-address <str>    Run the server. 
+    \\--n-times <usize>         An option parameter, which takes a value.
+    \\--upload-bytes <usize>    An option parameter, which takes a value.
+    \\--download-bytes <usize>  An option parameter, which takes a value.
+    \\
+);
+
 pub fn main() anyerror!void {
+    var res = try clap.parse(clap.Help, &params, clap.parsers.default, .{});
+    defer res.deinit();
+
     const allocator = std.heap.c_allocator;
 
     const Node = TestNode(TestPerfStreamContext, perf.TestMeta, TestPerfStreamContext.init);
     var node = try Node.init(allocator);
     defer node.deinit();
 
-    node.test_env.meta = .{
-        .upload_size_bytes = 10 << 20,
-        .download_size_bytes = 10 << 10,
-    };
-
-    // Some random quic-v1 peer with an ED25519 Key
-    // const bootstrap_peer = "/ip4/34.221.29.193/udp/4001/quic-v1/p2p/12D3KooWEBQi1GAUt1Ypftkvv1y2G9L2QHvjJ9A8oWRTDSnLwWLe";
-    // Read bootrap_peer from args
-    var args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    log.info("Args are: {s}", .{args});
-
-    if (args.len < 2) {
-        log.err("Usage: {s} <bootstrap_peer>", .{args[0]});
+    if (res.args.@"run-server") {
+        var shutdown_listener_sem: std.Thread.Semaphore = .{};
+        var listener_multiaddr_semaphore: std.Thread.Semaphore = .{};
+        var listener_multiaddr: []const u8 = undefined;
+        var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+        listener_multiaddr_semaphore.wait();
+        log.info("{s}", .{listener_multiaddr});
+        listener_thread.join();
         return;
     }
 
-    const bootstrap_peer = args[1];
+    node.test_env.meta = .{
+        .upload_size_bytes = res.args.@"upload-bytes".?,
+        .download_size_bytes = res.args.@"download-bytes".?,
+    };
+
+    const bootstrap_peer = res.args.@"server-address".?;
 
     const bootstrap_ma = try multiaddr.decodeMultiaddr(allocator, bootstrap_peer);
     defer bootstrap_ma.deinit(allocator);
@@ -47,6 +59,30 @@ pub fn main() anyerror!void {
     });
     defer node.msquic.ConnectionShutdown.?(stream_and_conn.conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
     node.test_env.done_semaphore.wait();
+    var perf_duration = node.test_env.meta.perf_duration;
+
+    var perf_durations = std.ArrayList(f32).init(allocator);
+    defer perf_durations.deinit();
+
+    try perf_durations.append(@intToFloat(f32, perf_duration) / 1_000_000.0);
+
+    const n_times = res.args.@"n-times".?;
+    var i: usize = 0;
+
+    while (i < n_times) : (i += 1) {
+        _ = try node.startStream(stream_and_conn.conn, perf.id);
+        // Wait for perf to finish
+        node.test_env.done_semaphore.wait();
+        perf_duration = node.test_env.meta.perf_duration;
+        try perf_durations.append(@intToFloat(f32, perf_duration) / 1_000_000.0);
+    }
+    // log.info("perfs {any}", .{perf_durations.items});
+
+    var string = std.ArrayList(u8).init(allocator);
+    try std.json.stringify(perf_durations.items, .{}, string.writer());
+    var stdout = std.io.getStdOut();
+
+    try stdout.writer().print("{s}", .{string.items});
 
     log.info("Shutting down", .{});
 }

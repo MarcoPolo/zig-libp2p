@@ -58,38 +58,50 @@
         #   '';
         #   XDG_CACHE_HOME = ".cache";
         # };
-        packages.interop = pkgs.stdenv.mkDerivation
-          {
-            name = "interop-binary";
-            src = ./.;
-            nativeBuildInputs = [
-              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
-            ];
-            buildInputs = [
-              zig
-              openssl
-            ]
-            ++ (if pkgs.stdenv.isDarwin
+        util.mkZigDerivation = { name, buildTarget, flags }: pkgs.stdenv.mkDerivation {
+          name = name;
+          src = ./.;
+          nativeBuildInputs =
+            (if pkgs.stdenv.isDarwin
             then
               (with pkgs.darwin.apple_sdk.frameworks;
-              [ Security Foundation ])
-            else [ ]);
-            LIBSYSTEM_INCLUDE = (if pkgs.stdenv.isDarwin then
-              "${pkgs.darwin.Libsystem.outPath}/include" else "");
-            LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
-            LIB_OPENSSL = "${openssl.dev}";
-            ZIG_DEPS = "${zig-deps.depsJson}";
-            buildPhase = ''
-              # build_dir=$(mktemp -d)
-              # cp -r . $build_dir
-              # cd $build_dir
-              export HOME=$PWD
-              ${zig}/bin/zig build interop
-            '';
-            installPhase = ''
-              cp -r zig-out $out
-            '';
-          };
+              [ ])
+            else [
+              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+
+            ]);
+          buildInputs = [
+            zig
+            openssl
+          ]
+          ++ (if pkgs.stdenv.isDarwin
+          then
+            (with pkgs.darwin.apple_sdk.frameworks;
+            [ Security Foundation ])
+          else [ ]);
+          LIBSYSTEM_INCLUDE = (if pkgs.stdenv.isDarwin then
+            "${pkgs.darwin.Libsystem.outPath}/include" else "");
+          LIB_MSQUIC = "${self.packages.${system}.libmsquic}";
+          LIB_OPENSSL = "${openssl.dev}";
+          ZIG_DEPS = "${zig-deps.depsJson}";
+          buildPhase = ''
+            export HOME=$PWD
+            ${zig}/bin/zig build ${flags} ${buildTarget}
+          '';
+          installPhase = ''
+            cp -r zig-out $out
+          '';
+        };
+        packages.interop = self.util.${system}.mkZigDerivation {
+          name = "interop-binary";
+          buildTarget = "interop";
+          flags = "";
+        };
+        packages.perf = self.util.${system}.mkZigDerivation {
+          name = "perf";
+          buildTarget = "perf";
+          flags = "-Drelease-safe";
+        };
 
         packages.interopContainer = pkgs.dockerTools.buildImage {
           name = "interop-runner";

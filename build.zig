@@ -199,6 +199,12 @@ pub fn buildPerfExample(b: *std.build.Builder, allocator: Allocator, mode: std.b
 
     // Add packages and link
     try addZigLibp2pPackages(allocator, perf, mode, target);
+    perf.addPackage(std.build.Pkg{
+        .name = "clap",
+        .source = .{
+            .path = "examples/perf/zig-clag/clap.zig",
+        },
+    });
 
     const os = target.os_tag orelse builtin.os.tag;
 
