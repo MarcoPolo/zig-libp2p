@@ -44,4 +44,4 @@ WORKDIR /app
 # Nix.
 COPY --from=builder /tmp/nix-store-closure /nix/store
 COPY --from=builder /app/result /app
-CMD ["/app/bin/perf"]
+ENTRYPOINT ["/app/bin/perf"]
