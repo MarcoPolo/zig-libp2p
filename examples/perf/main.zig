@@ -74,7 +74,7 @@ pub fn main() anyerror!void {
         // Wait for perf to finish
         node.test_env.done_semaphore.wait();
         perf_duration = node.test_env.meta.perf_duration;
-        try perf_durations.append(@intToFloat(f32, perf_duration) / 1_000_000.0);
+        try perf_durations.append(@intToFloat(f32, perf_duration) / std.time.ns_per_s);
     }
     // log.info("perfs {any}", .{perf_durations.items});
 
