@@ -35,13 +35,15 @@ pub fn main() anyerror!void {
         var shutdown_listener_sem: std.Thread.Semaphore = .{};
         var listener_multiaddr_semaphore: std.Thread.Semaphore = .{};
         var listener_multiaddr: []const u8 = undefined;
-        var serverListenAddr: [:0]u8 = blk: {
+        var serverListenAddr: [:0]const u8 = blk: {
             if (res.args.@"server-address") |server_address| {
-                break :blk try allocator.dupeZ(u8, server_address);
+                const bootstrap_ma = try multiaddr.decodeMultiaddr(allocator, server_address);
+                break :blk bootstrap_ma.target;
             } else {
                 break :blk try allocator.dupeZ(u8, "0.0.0.0");
             }
         };
+        log.info("Listening on {s}", .{serverListenAddr});
         defer allocator.free(serverListenAddr);
         var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, serverListenAddr, &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
         listener_multiaddr_semaphore.wait();
