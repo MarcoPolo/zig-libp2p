@@ -14,7 +14,7 @@ const TestPerfStreamContext = perf.TestPerfStreamContext;
 
 const params = clap.parseParamsComptime(
     \\--run-server              Run the server. 
-    \\--server-address <str>    Run the server. 
+    \\--server-address <str>    The server address. Can be used when listening to specify the address to listen on.
     \\--n-times <usize>         An option parameter, which takes a value.
     \\--upload-bytes <usize>    An option parameter, which takes a value.
     \\--download-bytes <usize>  An option parameter, which takes a value.
@@ -35,7 +35,15 @@ pub fn main() anyerror!void {
         var shutdown_listener_sem: std.Thread.Semaphore = .{};
         var listener_multiaddr_semaphore: std.Thread.Semaphore = .{};
         var listener_multiaddr: []const u8 = undefined;
-        var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+        var serverListenAddr: [:0]u8 = blk: {
+            if (res.args.@"server-address") |server_address| {
+                break :blk try allocator.dupeZ(u8, server_address);
+            } else {
+                break :blk try allocator.dupeZ(u8, "0.0.0.0");
+            }
+        };
+        defer allocator.free(serverListenAddr);
+        var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, serverListenAddr, &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
         listener_multiaddr_semaphore.wait();
         log.info("{s}", .{listener_multiaddr});
         listener_thread.join();
