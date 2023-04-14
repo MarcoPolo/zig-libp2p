@@ -74,7 +74,7 @@ pub fn main() anyerror!void {
     var perf_durations = std.ArrayList(f32).init(allocator);
     defer perf_durations.deinit();
 
-    try perf_durations.append(@intToFloat(f32, perf_duration) / 1_000_000.0);
+    try perf_durations.append(@intToFloat(f32, perf_duration) / std.time.ns_per_s);
 
     const n_times = res.args.@"n-times".?;
     var i: usize = 1;
