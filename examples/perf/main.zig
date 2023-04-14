@@ -77,7 +77,7 @@ pub fn main() anyerror!void {
     try perf_durations.append(@intToFloat(f32, perf_duration) / 1_000_000.0);
 
     const n_times = res.args.@"n-times".?;
-    var i: usize = 0;
+    var i: usize = 1;
 
     while (i < n_times) : (i += 1) {
         _ = try node.startStream(stream_and_conn.conn, perf.id);
