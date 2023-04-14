@@ -102,6 +102,11 @@
           buildTarget = "perf";
           flags = "-Drelease-safe";
         };
+        packages.perf-debug = self.util.${system}.mkZigDerivation {
+          name = "perf-debug";
+          buildTarget = "perf";
+          flags = "";
+        };
 
         packages.interopContainer = pkgs.dockerTools.buildImage {
           name = "interop-runner";
