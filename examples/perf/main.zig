@@ -40,7 +40,7 @@ pub fn main() anyerror!void {
                 const bootstrap_ma = try multiaddr.decodeMultiaddr(allocator, server_address);
                 break :blk bootstrap_ma.target;
             } else {
-                break :blk try allocator.dupeZ(u8, "0.0.0.0");
+                break :blk try allocator.dupeZ(u8, "0.0.0.0:4001");
             }
         };
         log.info("Listening on {s}", .{serverListenAddr});
