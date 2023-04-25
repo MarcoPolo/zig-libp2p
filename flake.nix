@@ -85,7 +85,7 @@
               # cp -r . $build_dir
               # cd $build_dir
               export HOME=$PWD
-              ${zig}/bin/zig build interop
+              ${zig}/bin/zig build -Dcpu=generic interop
             '';
             installPhase = ''
               cp -r zig-out $out
