@@ -34,6 +34,7 @@
       {
         packages.libmsquic = zig-msquic-flake.packages.${system}.libmsquic;
         packages.libmsquic-debug = zig-msquic-flake.packages.${system}.libmsquic-debug;
+        packages.zig = zig;
         packages.zls = zls.packages.${system}.default;
         # packages.zls = pkgs.stdenvNoCC.mkDerivation {
         #   name = "zls";
