@@ -63,9 +63,14 @@
           {
             name = "interop-binary";
             src = ./.;
-            nativeBuildInputs = [
-              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
-            ];
+            nativeBuildInputs =
+              (if pkgs.stdenv.isDarwin
+              then
+                (with pkgs.darwin.apple_sdk.frameworks;
+                [ ])
+              else [
+                pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+              ]);
             buildInputs = [
               zig
               openssl
