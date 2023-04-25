@@ -85,7 +85,7 @@
               # cp -r . $build_dir
               # cd $build_dir
               export HOME=$PWD
-              ${zig}/bin/zig build -Dcpu=generic interop
+              ${zig}/bin/zig build ${(if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then  "-Dcpu=x86_64" else "")} interop
             '';
             installPhase = ''
               cp -r zig-out $out
