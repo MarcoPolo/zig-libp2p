@@ -35,6 +35,11 @@ RUN mkdir /tmp/nix-store-closure
 RUN echo "Output references (Runtime dependencies):" $(nix-store -qR result/)
 RUN cp -R $(nix-store -qR result/) /tmp/nix-store-closure
 
+
+# Copy zig binary for debugging
+RUN nix build -o zig-result .#zig
+RUN cp -R $(nix-store -qR zig-result/) /tmp/zig-nix-store-closure
+
 # Our production stage
 FROM scratch
 WORKDIR /app
@@ -44,4 +49,5 @@ WORKDIR /app
 # Nix.
 COPY --from=builder /tmp/nix-store-closure /nix/store
 COPY --from=builder /app/result /app
+COPY --from=builder /app/zig-result/ /app/zig
 CMD ["/app/bin/interop"]

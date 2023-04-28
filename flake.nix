@@ -34,6 +34,7 @@
       {
         packages.libmsquic = zig-msquic-flake.packages.${system}.libmsquic;
         packages.libmsquic-debug = zig-msquic-flake.packages.${system}.libmsquic-debug;
+        packages.zig = zig;
         packages.zls = zls.packages.${system}.default;
         # packages.zls = pkgs.stdenvNoCC.mkDerivation {
         #   name = "zls";
@@ -62,9 +63,14 @@
           {
             name = "interop-binary";
             src = ./.;
-            nativeBuildInputs = [
-              pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
-            ];
+            nativeBuildInputs =
+              (if pkgs.stdenv.isDarwin
+              then
+                (with pkgs.darwin.apple_sdk.frameworks;
+                [ ])
+              else [
+                pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
+              ]);
             buildInputs = [
               zig
               openssl
@@ -84,7 +90,7 @@
               # cp -r . $build_dir
               # cd $build_dir
               export HOME=$PWD
-              ${zig}/bin/zig build interop
+              ${zig}/bin/zig build ${(if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then  "-Dcpu=x86_64" else "")} interop
             '';
             installPhase = ''
               cp -r zig-out $out

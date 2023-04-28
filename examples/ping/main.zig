@@ -1,24 +1,12 @@
 const std = @import("std");
-const os = std.os;
-const okredis = @import("okredis");
 const MsQuic = @import("msquic");
 const libp2p = @import("libp2p");
-const multiaddr = libp2p.multiaddr;
-const MemoryPool = libp2p.util.MemoryPool;
-const crypto = libp2p.crypto;
 const CredentialConfigHelper = @import("libp2p-msquic").crypto.CredentialConfigHelper;
 const getPeerPubKey = @import("libp2p-msquic").crypto.getPeerPubKey;
+const multiaddr = libp2p.multiaddr;
 const log = std.log;
 const ping = libp2p.protocols.ping;
 const TestNode = libp2p.util.test_util.TestNode;
-
-const Allocator = std.mem.Allocator;
-const QuicStatus = MsQuic.QuicStatus;
-const ArrayList = std.ArrayList;
-const Instant = std.time.Instant;
-const Semaphore = std.Thread.Semaphore;
-
-const stdout = std.io.getStdOut();
 
 const TestPingStreamContext = ping.TestPingStreamContext;
 
