@@ -213,7 +213,7 @@ pub const Handler = struct {
     }
 };
 
-pub const HandlerWithMSS = mss.WrapHandlerWithMSS(Handler);
+pub const HandlerWithMSS = mss.WrapHandlerWithMSSNonOptimisticListener(Handler);
 
 const TestEnv = @import("../util/test_util.zig").TestEnv(void);
 var test_supported_protos = [_][]const u8{id};
