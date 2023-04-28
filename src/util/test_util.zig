@@ -440,6 +440,9 @@ pub fn TestNode(
                             .{peer_id_legacy},
                         );
                     },
+                    MsQuic.QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT => {
+                        log.warn("Connection shutdown by transport. Status={}", .{event.*.unnamed_0.SHUTDOWN_INITIATED_BY_TRANSPORT.Status});
+                    },
                     else => {},
                 }
 
@@ -503,6 +506,9 @@ pub fn TestNode(
                         "Peer is {s}",
                         .{peer_id_legacy},
                     );
+                },
+                MsQuic.QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT => {
+                    log.warn("Connection shutdown by transport. Status={}", .{event.*.unnamed_0.SHUTDOWN_INITIATED_BY_TRANSPORT.Status});
                 },
                 else => {},
             }
