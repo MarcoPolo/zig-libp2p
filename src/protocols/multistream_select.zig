@@ -52,6 +52,10 @@ pub const Handler = struct {
 
     is_initiator: bool,
 
+    // Should we delay all sends and assume the other node is optimistic (default)? Or should we flush our sends after we negotiate the protocol?
+    // This is added as compatibility when interaction with non-optimistic nodes (rust-libp2p, and maybe others (?)). Set to false for compatibility.
+    delay_sends_when_not_initiator: bool,
+
     state: State = .ready,
 
     supported_protos: [][]const u8,
@@ -78,6 +82,7 @@ pub const Handler = struct {
         is_initiator: bool,
         supported_protos: [][]const u8,
         initialized_quic_buffer_pool: *MemoryPool(MsQuic.QUIC_BUFFER),
+        delay_sends_when_not_initiator: bool,
     ) Handler {
         return Handler{
             .eventHandler = eventHandler,
@@ -86,6 +91,7 @@ pub const Handler = struct {
             .supported_protos = supported_protos,
             .is_initiator = is_initiator,
             .stream_handle = stream_handle,
+            .delay_sends_when_not_initiator = delay_sends_when_not_initiator,
         };
     }
 
@@ -93,7 +99,7 @@ pub const Handler = struct {
         _ = self;
     }
 
-    fn delayedSend(self: *Handler, stream: MsQuic.HQUIC, buf: []const u8) !c_uint {
+    fn send(self: *Handler, stream: MsQuic.HQUIC, buf: []const u8, delay: bool) !c_uint {
         self.pending_sends += 1;
         const quic_buf_to_send = try self.quic_buffer_pool.create();
         // Hack to drop the const. QUIC_BUFFER/MsQuic won't modify the buffer.
@@ -107,7 +113,7 @@ pub const Handler = struct {
             stream,
             quic_buf_to_send,
             1,
-            MsQuic.QUIC_SEND_FLAG_DELAY_SEND,
+            if (delay) MsQuic.QUIC_SEND_FLAG_DELAY_SEND else MsQuic.QUIC_SEND_FLAG_NONE,
             quic_buf_to_send,
         );
         return send_status;
@@ -121,7 +127,7 @@ pub const Handler = struct {
         std.mem.copy(u8, self.expected_buf[multistream_protocol_id_with_newline.len + 1 + proto.len ..], "\n");
         self.expected_len = @intCast(u16, multistream_protocol_id_with_newline.len + 1 + proto.len + 1);
 
-        var send_status = try self.delayedSend(stream, self.expected_buf[0..self.expected_len]);
+        var send_status = try self.send(stream, self.expected_buf[0..self.expected_len], true);
         log.debug("Sent first MSS message initiator={} status={} sent={s}", .{ self.is_initiator, send_status, self.expected_buf[0..self.expected_len] });
 
         self.state = .optimistically_negotiated;
@@ -284,13 +290,13 @@ pub const Handler = struct {
                             } else {
                                 log.debug("initiator requests proto={s} and we don't support it", .{requested_proto});
                                 self.state = .failed;
-                                _ = delayedSend(self, stream, multistream_protocol_id_with_newline) catch {
+                                _ = send(self, stream, multistream_protocol_id_with_newline, true) catch {
                                     self.state = .failed;
                                     self.eventHandler(self, stream, .{ .failed = {} });
                                     log.debug("Out of memory initiator={}", .{self.is_initiator});
                                     return QuicStatus.EventHandlerError.OutOfMemory;
                                 };
-                                _ = delayedSend(self, stream, na_with_newline) catch {
+                                _ = send(self, stream, na_with_newline, false) catch {
                                     self.state = .failed;
                                     self.eventHandler(self, stream, .{ .failed = {} });
                                     log.debug("Out of memory initiator={}", .{self.is_initiator});
@@ -320,26 +326,26 @@ pub const Handler = struct {
                         log.debug("Negotiated protocol: initiator={} {s}", .{ self.is_initiator, negotiated_proto });
                         self.state = .optimistically_negotiated; // Optimistic because we haven't finished our send yet.
                         self.eventHandler(self, stream, .{ .negotiated = negotiated_proto });
-                        _ = delayedSend(self, stream, multistream_protocol_id_with_newline) catch {
+                        _ = send(self, stream, multistream_protocol_id_with_newline, true) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
                             return QuicStatus.EventHandlerError.OutOfMemory;
                         };
                         self.size_buf[0] = @intCast(u8, negotiated_proto.len + 1);
-                        _ = delayedSend(self, stream, &self.size_buf) catch {
+                        _ = send(self, stream, &self.size_buf, true) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
                             return QuicStatus.EventHandlerError.OutOfMemory;
                         };
-                        _ = delayedSend(self, stream, negotiated_proto) catch {
+                        _ = send(self, stream, negotiated_proto, true) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
                             return QuicStatus.EventHandlerError.OutOfMemory;
                         };
-                        _ = delayedSend(self, stream, "\n") catch {
+                        _ = send(self, stream, "\n", (!self.is_initiator and !self.delay_sends_when_not_initiator)) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
@@ -419,6 +425,7 @@ const TestMSSStreamContext = struct {
                 is_initiator,
                 &protos,
                 quic_buffer_pool,
+                true,
             ),
             .is_initiator = is_initiator,
             .test_env = test_env,
@@ -467,8 +474,18 @@ const TestMSSStreamContext = struct {
     }
 };
 
+// Wraps a Handler with Multistream select. Calls the wrapped handler's .streamStarted(stream_handle, proto) method when ready. Flushes sends once a protocol is negotiated.
+pub fn WrapHandlerWithMSSNonOptimisticListener(comptime WrappedHandler: type) type {
+    return WrapHandlerWithMSSWithOpt(WrappedHandler, false);
+}
+
 // Wraps a Handler with Multistream select. Calls the wrapped handler's .streamStarted(stream_handle, proto) method when ready.
 pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
+    return WrapHandlerWithMSSWithOpt(WrappedHandler, true);
+}
+
+// Wraps a Handler with Multistream select. Calls the wrapped handler's .streamStarted(stream_handle, proto) method when ready.
+fn WrapHandlerWithMSSWithOpt(comptime WrappedHandler: type, comptime delay_sends_when_not_initiator: bool) type {
     return struct {
         const Self = @This();
         mss: Handler,
@@ -491,6 +508,7 @@ pub fn WrapHandlerWithMSS(comptime WrappedHandler: type) type {
                     is_initiator,
                     supported_protos,
                     initialized_quic_buffer_pool,
+                    delay_sends_when_not_initiator,
                 ),
             };
         }
