@@ -106,6 +106,8 @@ pub fn buildTests(b: *std.build.Builder, allocator: Allocator, mode: std.builtin
     const msquic_builder = @import("./zig-msquic/build.zig");
 
     const libp2p_test = b.addTestExe("libp2p-tests", "src/libp2p.zig");
+    libp2p_test.setTarget(target);
+    libp2p_test.setBuildMode(mode);
     libp2p_test.filter = test_filter;
 
     // Add packages and link
@@ -196,6 +198,8 @@ pub fn addZigLibp2pPackages(allocator: Allocator, step: *std.build.LibExeObjStep
 
 pub fn buildPingExample(b: *std.build.Builder, allocator: Allocator, mode: std.builtin.Mode, target: std.zig.CrossTarget) anyerror!void {
     const ping = b.addExecutable("ping", "examples/ping/main.zig");
+    ping.setTarget(target);
+    ping.setBuildMode(mode);
 
     // Add packages and link
     try addZigLibp2pPackages(allocator, ping, mode, target);
@@ -213,6 +217,11 @@ pub fn buildInterop(b: *std.build.Builder, allocator: Allocator, mode: std.built
     const interop = b.addExecutable("interop", "interop/main.zig");
     const interop_test = b.addTestExe("interop-test", "interop/main.zig");
     interop_test.filter = test_filter;
+
+    interop.setTarget(target);
+    interop.setBuildMode(mode);
+    interop_test.setTarget(target);
+    interop_test.setBuildMode(mode);
 
     // Add packages and link
     inline for (.{ interop, interop_test }) |step| {
