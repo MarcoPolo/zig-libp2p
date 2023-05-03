@@ -435,7 +435,6 @@ const TestMSSStreamContext = struct {
 
     pub fn deinit(self: *TestMSSStreamContext) void {
         self.mss.deinit();
-        _ = self.msquic.StreamClose.?(self.stream_handle);
         self.allocator.destroy(self);
     }
 
@@ -454,6 +453,7 @@ const TestMSSStreamContext = struct {
 
         switch (event.*.Type) {
             MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                _ = self.msquic.StreamClose.?(self.stream_handle);
                 self.deinit();
             },
             else => {},
@@ -527,7 +527,7 @@ fn WrapHandlerWithMSSWithOpt(comptime WrappedHandler: type, comptime delay_sends
         }
 
         pub fn handleEvent(self: *Self, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
-            log.debug("initiator={} MSS state={} handleEvent: {any}", .{ self.mss.is_initiator, self.mss.state, event.*.Type });
+            log.debug("MSS  handling event: initiator={} state={} from={any} {s}", .{ self.mss.is_initiator, self.mss.state, stream, MsQuic.streamEventToString(event.*.Type) });
             switch (self.mss.state) {
                 .done => {
                     // No more events need to be passed to MSS.

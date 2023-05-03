@@ -59,7 +59,11 @@ pub const InteropStreamContext = struct {
     pub fn handleEvent(self: *InteropStreamContext, stream: MsQuic.HQUIC, event: [*c]MsQuic.struct_QUIC_STREAM_EVENT) QuicStatus.EventHandlerError!QuicStatus.EventHandlerStatus {
         switch (event.*.Type) {
             MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                _ = self.ping.wrapped.msquic.StreamClose.?(stream);
+                var done_semaphore = &self.test_env.done_semaphore;
                 self.deinit();
+                // Safe because done_semaphore is owned by the parent, not this context.
+                done_semaphore.post();
                 return .Success;
             },
             else => {
@@ -68,7 +72,7 @@ pub const InteropStreamContext = struct {
         }
     }
 
-    pub fn handlePingEvent(handler: *ping.Handler, _: MsQuic.HQUIC, event: ping.Event) MsQuic.QUIC_STATUS {
+    pub fn handlePingEvent(handler: *ping.Handler, stream: MsQuic.HQUIC, event: ping.Event) MsQuic.QUIC_STATUS {
         switch (event) {
             .ping_response_received => |dur| {
                 log.info("Ping took: {} us", .{dur / 1000});
@@ -80,7 +84,7 @@ pub const InteropStreamContext = struct {
                 const self = @fieldParentPtr(InteropStreamContext, "ping", ping.HandlerWithMSS.getParentPtrFromWrappedHandler(handler));
                 const durSinceStart = @intToFloat(f32, now.since(self.start_time)) / std.time.ns_per_ms;
                 stdout_writer.print("{{\"handshakePlusOneRTTMillis\": {d:.3}, \"pingRTTMilllis\": {d:.3}}}\n", .{ durSinceStart, durMs }) catch unreachable;
-                self.test_env.done_semaphore.post();
+                _ = self.ping.wrapped.msquic.StreamShutdown.?(stream, MsQuic.QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
             },
         }
         return QuicStatus.Success;

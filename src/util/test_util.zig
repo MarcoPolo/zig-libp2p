@@ -16,6 +16,7 @@ const QuicStatus = MsQuic.QuicStatus;
 const ArrayList = std.ArrayList;
 const Instant = std.time.Instant;
 const Semaphore = std.Thread.Semaphore;
+const Thread = std.Thread;
 
 const ifaddrs = @cImport({
     @cInclude("ifaddrs.h");
@@ -54,6 +55,41 @@ pub fn TestNode(
         registration: MsQuic.HQUIC,
         configuration: MsQuic.HQUIC,
         quic_buffer_pool: MemoryPool(MsQuic.QUIC_BUFFER),
+
+        no_open_conns: NoOpenConns = .{},
+
+        const NoOpenConns = struct {
+            m: Thread.Mutex = .{},
+            c: Thread.Condition = .{},
+            active_conns: usize = 0,
+
+            fn incActiveConns(self: *NoOpenConns) void {
+                self.m.lock();
+                defer self.m.unlock();
+                log.debug("active conns={}", .{self.active_conns});
+
+                self.active_conns += 1;
+            }
+            fn decActiveConns(self: *NoOpenConns) void {
+                self.m.lock();
+                defer self.m.unlock();
+                log.debug("active conns={}", .{self.active_conns});
+
+                self.active_conns -= 1;
+                if (self.active_conns == 0) {
+                    self.c.signal();
+                }
+            }
+
+            pub fn wait(self: *NoOpenConns) void {
+                self.m.lock();
+                defer self.m.unlock();
+
+                while (self.active_conns != 0) {
+                    self.c.wait(&self.m);
+                }
+            }
+        };
 
         const DialSettings = struct {
             target: [:0]const u8 = "",
@@ -129,10 +165,10 @@ pub fn TestNode(
             };
         }
         pub fn deinit(self: *@This()) void {
-            defer MsQuic.MsQuicClose(self.msquic);
-            defer self.msquic.RegistrationClose.?(self.registration);
-            defer self.msquic.ConfigurationClose.?(self.configuration);
-            defer self.quic_buffer_pool.deinit();
+            self.msquic.ConfigurationClose.?(self.configuration);
+            self.msquic.RegistrationClose.?(self.registration);
+            MsQuic.MsQuicClose(self.msquic);
+            self.quic_buffer_pool.deinit();
         }
 
         pub const ConnAndStream = struct {
@@ -182,6 +218,7 @@ pub fn TestNode(
             if (QuicStatus.isError(self.msquic.ConnectionOpen.?(self.registration, Self.outboundConnectionCallback, self, &conn))) {
                 return error.FailedToOpenConn;
             }
+            self.no_open_conns.incActiveConns();
 
             errdefer self.msquic.ConnectionShutdown.?(conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 
@@ -372,6 +409,7 @@ pub fn TestNode(
                         if (QuicStatus.isError(self.msquic.ConnectionSetConfiguration.?(conn, self.app.configuration))) {
                             return QuicStatus.ConnectionRefused;
                         }
+                        self.app.no_open_conns.incActiveConns();
                     },
                     MsQuic.QUIC_LISTENER_EVENT_STOP_COMPLETE => {
                         log.info("Listener stopped", .{});
@@ -394,6 +432,7 @@ pub fn TestNode(
                         if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
                             self.msquic.ConnectionClose.?(connection);
                         }
+                        self.app.no_open_conns.decActiveConns();
                     },
                     MsQuic.QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED => {
                         var stream_context = self.allocator.create(StreamContext) catch {
@@ -462,6 +501,7 @@ pub fn TestNode(
                     if (!event.*.unnamed_0.SHUTDOWN_COMPLETE.AppCloseInProgress) {
                         self.msquic.ConnectionClose.?(connection);
                     }
+                    self.no_open_conns.decActiveConns();
                 },
                 MsQuic.QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED => {
                     var stream_context = self.allocator.create(StreamContext) catch {
@@ -532,10 +572,17 @@ pub fn runDialer(allocator: Allocator, comptime Node: anytype, proto_to_dial: []
         .target_port = ma.port,
         .proto = proto_to_dial,
     });
-    defer client.msquic.ConnectionShutdown.?(stream_and_conn.conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
     // Wait for done
     client.test_env.done_semaphore.wait();
+
     log.info("Shutting down", .{});
+    client.msquic.ConnectionShutdown.?(stream_and_conn.conn, MsQuic.QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+
+    // Wait for all connections to be closed
+    log.info("Waiting for conns to shut down", .{});
+    client.no_open_conns.wait();
+
+    log.info("Closing app", .{});
 }
 
 pub fn runListener(allocator: Allocator, comptime Node: anytype, ip: [:0]const u8, out_listener_multiaddr: *[]const u8, addr_semaphore: *Semaphore, shutdown_semaphore: *Semaphore) !void {
