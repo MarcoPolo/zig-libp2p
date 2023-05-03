@@ -91,6 +91,7 @@ pub const Handler = struct {
             },
 
             MsQuic.QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE => {
+                _ = self.msquic.StreamClose.?(stream);
                 self.deinit();
             },
 
