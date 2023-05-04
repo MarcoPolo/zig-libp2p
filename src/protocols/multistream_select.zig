@@ -345,7 +345,7 @@ pub const Handler = struct {
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
                             return QuicStatus.EventHandlerError.OutOfMemory;
                         };
-                        _ = send(self, stream, "\n", (!self.is_initiator and !self.delay_sends_when_not_initiator)) catch {
+                        _ = send(self, stream, "\n", (!self.is_initiator and self.delay_sends_when_not_initiator)) catch {
                             self.state = .failed;
                             self.eventHandler(self, stream, .{ .failed = {} });
                             log.debug("Out of memory initiator={}", .{self.is_initiator});
