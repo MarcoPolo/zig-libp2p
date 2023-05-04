@@ -66,19 +66,19 @@ pub fn TestNode(
             fn incActiveConns(self: *NoOpenConns) void {
                 self.m.lock();
                 defer self.m.unlock();
-                log.debug("active conns={}", .{self.active_conns});
 
                 self.active_conns += 1;
+                log.debug("active conns={}", .{self.active_conns});
             }
             fn decActiveConns(self: *NoOpenConns) void {
                 self.m.lock();
                 defer self.m.unlock();
-                log.debug("active conns={}", .{self.active_conns});
 
                 self.active_conns -= 1;
                 if (self.active_conns == 0) {
                     self.c.signal();
                 }
+                log.debug("active conns={}", .{self.active_conns});
             }
 
             pub fn wait(self: *NoOpenConns) void {
