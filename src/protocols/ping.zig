@@ -65,7 +65,7 @@ pub const Handler = struct {
                     log.debug("Total buf size: {} buffer count: {}\n", .{ buffers.TotalBufferLength, buffers.BufferCount });
                     if (buffers.TotalBufferLength == 0) {
                         // Nothing to do.
-                        return .Continue
+                        return .Continue;
                     }
                     const status = self.handlePingResp(stream, buffers.Buffers[0..buffers.BufferCount]);
                     if (QuicStatus.isError(status)) {
@@ -123,7 +123,7 @@ pub const Handler = struct {
         }
 
         var recv_buf = [_]u8{0} ** 32;
-        var write_slice = recv_buf[0..];
+        var write_slice: []u8 = recv_buf[0..];
 
         for (bufs) |buf| {
             const amount_to_copy = std.math.min(buf.Length, write_slice.len);
