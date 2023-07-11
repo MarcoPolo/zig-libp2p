@@ -63,6 +63,10 @@ pub const Handler = struct {
                 const buffers = event.*.unnamed_0.RECEIVE;
                 if (self.is_initiator) {
                     log.debug("Total buf size: {} buffer count: {}\n", .{ buffers.TotalBufferLength, buffers.BufferCount });
+                    if (buffers.TotalBufferLength == 0) {
+                        // Nothing to do.
+                        return .Continue
+                    }
                     const status = self.handlePingResp(stream, buffers.Buffers[0..buffers.BufferCount]);
                     if (QuicStatus.isError(status)) {
                         return QuicStatus.UintToEventHandlerError(status);
@@ -127,6 +131,12 @@ pub const Handler = struct {
                 break;
             }
             std.mem.copy(u8, write_slice[0..amount_to_copy], buf.Buffer[0..amount_to_copy]);
+            write_slice = write_slice[amount_to_copy..];
+        }
+        if (write_slice.len > 0) {
+            // We haven't received enough data.
+            log.err("Wrong response. Not enough data, got: {s}", .{std.fmt.fmtSliceHexLower(&recv_buf)});
+            return QuicStatus.InternalError;
         }
         if (std.mem.eql(u8, &recv_buf, &self.sent_msg)) {
             if (self.start_time) |start_time| {
