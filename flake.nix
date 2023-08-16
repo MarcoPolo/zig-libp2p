@@ -61,7 +61,7 @@
         # };
         packages.interop = pkgs.stdenv.mkDerivation
           {
-            name = "interop-binary";
+            name = "interop";
             src = ./.;
             nativeBuildInputs =
               (if pkgs.stdenv.isDarwin
