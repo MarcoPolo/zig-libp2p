@@ -17,6 +17,8 @@ RUN cachix use zig-libp2p
 
 WORKDIR /app
 COPY flake* ./
+
+RUN nix-store --verify --check-contents --repair
 RUN mkdir -p zig-msquic
 COPY zig-msquic ./zig-msquic
 COPY zig-deps.nix ./
@@ -28,7 +30,7 @@ RUN if [ -n "$CACHIX_AUTH_TOKEN" ] ; then cachix authtoken $CACHIX_AUTH_TOKEN ; 
 RUN if [ -n "$CACHIX_AUTH_TOKEN" ] ; then cachix push zig-libp2p dev-profile ; fi
 
 COPY . .
-RUN nix build '.#interop'
+RUN nix --extra-experimental-features nix-command --extra-experimental-features flakes build '.#interop'
 
 # Copy all the run time dependencies into /tmp/nix-store-closure
 RUN mkdir /tmp/nix-store-closure
@@ -37,7 +39,7 @@ RUN cp -R $(nix-store -qR result/) /tmp/nix-store-closure
 
 
 # Copy zig binary for debugging
-RUN nix build -o zig-result .#zig
+RUN nix build --extra-experimental-features nix-command --extra-experimental-features flakes -o zig-result .#zig
 RUN cp -R $(nix-store -qR zig-result/) /tmp/zig-nix-store-closure
 
 # Our production stage
