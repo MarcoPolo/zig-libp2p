@@ -10,14 +10,7 @@
       flake-utils.follows = "flake-utils";
     };
   };
-  inputs.zls = {
-    url = "github:marcopolo/zls/master";
-    inputs = {
-      nixpkgs.follows = "nixpkgs-unstable";
-      # zig-overlay.follows = "zig-overlay";
-      flake-utils.follows = "flake-utils";
-    };
-  };
+  inputs.zls.url = "github:zigtools/zls";
 
 
   outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay, zls }@inputs:
