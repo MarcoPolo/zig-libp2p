@@ -14,7 +14,7 @@
     url = "github:marcopolo/zls/master";
     inputs = {
       nixpkgs.follows = "nixpkgs-unstable";
-      # zig-overlay.follows = "zig-overlay";
+      zig-overlay.follows = "zig-overlay";
       flake-utils.follows = "flake-utils";
     };
   };
