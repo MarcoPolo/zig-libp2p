@@ -9,15 +9,15 @@ on:
       - "main"
 
 jobs:
-  run-multidim-interop:
+  run-transport-interop:
     timeout-minutes: 45
-    name: Run multidimensional interoperability tests
+    name: Run transport interoperability tests
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Build image
         run: docker build -t zig-libp2p-head -f interop/Dockerfile --build-arg CACHIX_AUTH_TOKEN=${{ secrets.CACHIX_AUTH_TOKEN }} .
-      - uses: libp2p/test-plans/.github/actions/run-interop-ping-test@master
+      - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
         with:
           test-filter: zig-libp2p-head
           extra-versions: ${{ github.workspace }}/interop/ping-version.json
