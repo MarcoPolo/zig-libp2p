@@ -4,22 +4,19 @@
   inputs.nixpkgs-unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.zig-overlay = {
-    url = "github:mitchellh/zig-overlay";
+    url = "github:bandithedoge/zig-overlay";
     inputs = {
       nixpkgs.follows = "nixpkgs-unstable";
       flake-utils.follows = "flake-utils";
     };
   };
-  inputs.zls.url = "github:zigtools/zls";
 
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay, zls }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, zig-overlay }@inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { system = system; };
-        pkgs-unstable = import nixpkgs-unstable { system = system; };
-        zig = zig-overlay.packages.${system}."0.10.1";
-        # zig = zig-overlay.packages.${system}."master";
+        zig = zig-overlay.packages.${system}."0_10_1";
         zig-deps = (import ./zig-deps.nix) { inherit pkgs; };
         zig-msquic-flake = ((import ./zig-msquic/flake.nix).outputs inputs);
         openssl = zig-msquic-flake.packages.${system}.openssl;
@@ -28,30 +25,6 @@
         packages.libmsquic = zig-msquic-flake.packages.${system}.libmsquic;
         packages.libmsquic-debug = zig-msquic-flake.packages.${system}.libmsquic-debug;
         packages.zig = zig;
-        packages.zls = zls.packages.${system}.default;
-        # packages.zls = pkgs.stdenvNoCC.mkDerivation {
-        #   name = "zls";
-        #   version = "master";
-        #   src = pkgs.fetchFromGitHub {
-        #     owner = "zigtools";
-        #     repo = "zls";
-        #     rev = "0.9.0";
-        #     fetchSubmodules = true;
-        #     sha256 = "sha256-MVo21qNCZop/HXBqrPcosGbRY+W69KNCc1DfnH47GsI=";
-        #     # sha256 = pkgs.lib.fakeSha256;
-        #   };
-        #   nativeBuildInputs = [
-        #     deps.zig
-        #     pkgs.autoPatchelfHook # Automatically setup the loader, and do the magic
-        #   ];
-        #   dontConfigure = true;
-        #   dontInstall = true;
-        #   buildPhase = ''
-        #     mkdir -p $out
-        #     zig build install -Drelease-safe=true -Ddata_version=master --prefix $out
-        #   '';
-        #   XDG_CACHE_HOME = ".cache";
-        # };
         packages.interop = pkgs.stdenv.mkDerivation
           {
             name = "interop";
@@ -111,7 +84,6 @@
             rec {
               buildInputs = [
                 zig
-                self.packages.${system}.zls
                 openssl
                 # pkgs.pkg-config
               ]

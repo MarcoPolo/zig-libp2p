@@ -5,7 +5,7 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   inputs.zig-overlay = {
-    url = "github:mitchellh/zig-overlay";
+    url = "github:bandithedoge/zig-overlay";
     inputs = {
       nixpkgs.follows = "nixpkgs-unstable";
       flake-utils.follows = "flake-utils";
@@ -23,7 +23,7 @@
         #   {
         #     static = true;
         #   };
-        zig = zig-overlay.packages.${system}."0.10.1";
+        zig = zig-overlay.packages.${system}."0_10_1";
       in
       {
         packages.libmsquic = pkgs.callPackage (import ./msquic.nix { debug = false; }) { quictls = openssl; };
