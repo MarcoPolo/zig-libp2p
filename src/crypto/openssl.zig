@@ -123,6 +123,7 @@ pub const X509 = struct {
         _ = c.X509_NAME_add_entry_by_txt(name, "O", c.MBSTRING_ASC, "libp2p", -1, -1, 0);
         _ = c.X509_NAME_add_entry_by_txt(name, "CN", c.MBSTRING_ASC, "libp2p", -1, -1, 0);
 
+        //check
         var x509_wrapper = X509{ .inner = x509.? };
         if (libp2p_extension_data != null) {
             try x509_wrapper.insertLibp2pExtension(libp2p_extension_data.?);
@@ -285,7 +286,47 @@ pub const PeerID = union(KeyType) {
     },
 
     Secp256k1: struct { pub_key_bytes: [32]u8 },
-    ECDSA: struct { pub_key_bytes: [64]u8 },
+    ECDSA: struct {
+        pub_key_bytes: [64]u8,
+
+        pub fn toString(self: @This()) [OpenSSLKey.ECDSAKeyPair.PublicKey.PeerIDStrLen]u8 {
+            var bytes = (([_]u8{
+                // cidv1
+                0x01,
+                // libp2p-key
+                0x72,
+                // multihash identity
+                0x00,
+                @intCast(u8, OpenSSLKey.ECDSAKeyPair.PublicKey.pb_encoded_len),
+            }) ++ [_]u8{0} ** OpenSSLKey.ECDSAKeyPair.PublicKey.pb_encoded_len);
+
+            // The key should be written starting at the 5th byte
+            _ = OpenSSLKey.ECDSAKeyPair.PublicKey.serializePbFromRaw(self.pub_key_bytes, bytes[4..]);
+
+            // +1 for the multibase prefix
+            const b32_size = comptime no_padding_encoding.encodeLen(bytes.len) + 1;
+            var buf = [_]u8{0} ** b32_size;
+            // Multibase "b" base32
+            buf[0] = 'b';
+
+            _ = no_padding_encoding.encode(buf[1..], bytes[0..]);
+
+            return buf;
+        }
+
+        pub fn toLegacyString(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+            var bytes = (([_]u8{
+                // multihash identity
+                0x00,
+                @intCast(u8, OpenSSLKey.ECDSAKeyPair.PublicKey.pb_encoded_len),
+            }) ++ [_]u8{0} ** OpenSSLKey.ECDSAKeyPair.PublicKey.pb_encoded_len);
+
+            // The key should be written starting at the 2nd byte
+            _ = OpenSSLKey.ECDSAKeyPair.PublicKey.serializePbFromRaw(self.pub_key_bytes, bytes[2..]);
+
+            return b58.encode(allocator, &bytes);
+        }
+    },
 
     pub fn equal(self: PeerID, other: PeerID) bool {
         if (@enumToInt(self) != @enumToInt(other)) {
@@ -298,6 +339,9 @@ pub const PeerID = union(KeyType) {
             .Ed25519 => {
                 return std.mem.eql(u8, self.Ed25519.pub_key_bytes[0..], other.Ed25519.pub_key_bytes[0..]);
             },
+            .ECDSA => {
+                return std.mem.eql(u8, self.ECDSA.pub_key_bytes[0..], other.ECDSA.pub_key_bytes[0..]);
+            },
             else => {
                 @panic("TODO");
             },
@@ -308,6 +352,12 @@ pub const PeerID = union(KeyType) {
         switch (self) {
             .Ed25519 => {
                 const peer_id = self.Ed25519.toString();
+                const peer_id_copy = try allocator.alloc(u8, peer_id.len);
+                std.mem.copy(u8, peer_id_copy, peer_id[0..]);
+                return peer_id_copy;
+            },
+            .ECDSA => {
+                const peer_id = self.ECDSA.toString();
                 const peer_id_copy = try allocator.alloc(u8, peer_id.len);
                 std.mem.copy(u8, peer_id_copy, peer_id[0..]);
                 return peer_id_copy;
@@ -328,11 +378,62 @@ pub const OpenSSLKey = union(KeyType) {
     pub const ECDSAKeyPair = struct {
         key: *c.EVP_PKEY,
         const key_len = 64;
+        const curve_name = "p256";
+
         pub const PublicKey = struct {
             key: *c.EVP_PKEY,
             const DER_encoded_len = key_len + 12;
             const pb_encoded_len = key_len + 4;
             const libp2p_extension_len = DER_encoded_len + libp2p_tls_handshake_prefix.len;
+            const PeerIDStrLen = blk: {
+                const bytes = ([_]u8{
+                    // cidv1
+                    0x01,
+                    // libp2p-key
+                    0x72,
+                    // multihash identity
+                    0x00,
+                    @intCast(u8, pb_encoded_len),
+                } ++ [_]u8{0} ** pb_encoded_len);
+
+                // +1 for the multibase prefix
+                const b32_size = no_padding_encoding.encodeLen(bytes.len) + 1;
+                break :blk b32_size;
+            };
+
+            pub fn toPeerID(self: @This()) !PeerID {
+                var peer = PeerID{ .ECDSA = .{ .pub_key_bytes = [_]u8{0} ** key_len } };
+
+                // Get the EC_KEY from EVP_PKEY
+                var ec_key = c.EVP_PKEY_get1_EC_KEY(self.key);
+                if (ec_key == null) {
+                    return error.GetECKeyFailed;
+                }
+                defer c.EC_KEY_free(ec_key);
+
+                // Get the EC_POINT (public key)
+                var ec_point = c.EC_KEY_get0_public_key(ec_key);
+                if (ec_point == null) {
+                    return error.GetECPointFailed;
+                }
+
+                // Get the EC_GROUP
+                var ec_group = c.EC_KEY_get0_group(ec_key);
+                if (ec_group == null) {
+                    return error.GetECGroupFailed;
+                }
+
+                // Convert the EC_POINT to uncompressed binary form (65 bytes)
+                var buf = [_]u8{0} ** 65;
+                const point_len = c.EC_POINT_point2oct(ec_group, ec_point, c.POINT_CONVERSION_UNCOMPRESSED, &buf, 65, null);
+
+                if (point_len != 65) {
+                    return error.ECPointConversionFailed;
+                }
+
+                std.mem.copy(u8, peer.ECDSA.pub_key_bytes[0..], buf[1..65]);
+                return peer;
+            }
 
             fn libp2pExtension(self: @This()) [libp2p_extension_len]u8 {
                 var out = [_]u8{0} ** libp2p_extension_len;
@@ -345,7 +446,216 @@ pub const OpenSSLKey = union(KeyType) {
 
                 return out;
             }
+
+            fn serializePb(self: @This(), out: []u8) !usize {
+                assert(out.len >= pb_encoded_len);
+                serializePbHeader(out);
+
+                // Get the EC_KEY from EVP_PKEY
+                var ec_key = c.EVP_PKEY_get1_EC_KEY(self.key);
+                if (ec_key == null) {
+                    return error.GetECKeyFailed;
+                }
+                defer c.EC_KEY_free(ec_key);
+
+                // Get the EC_POINT (public key)
+                var ec_point = c.EC_KEY_get0_public_key(ec_key);
+                if (ec_point == null) {
+                    return error.GetECPointFailed;
+                }
+
+                // Get the EC_GROUP
+                var ec_group = c.EC_KEY_get0_group(ec_key);
+                if (ec_group == null) {
+                    return error.GetECGroupFailed;
+                }
+
+                // Convert the EC_POINT to uncompressed binary form (65 bytes)
+                var buf = [_]u8{0} ** 65;
+                const point_len = c.EC_POINT_point2oct(ec_group, ec_point, c.POINT_CONVERSION_UNCOMPRESSED, &buf, 65, null);
+
+                if (point_len != 65) {
+                    return error.ECPointConversionFailed;
+                }
+
+                var pub_key_out_slice = out[4..];
+                std.mem.copy(u8, pub_key_out_slice[0..key_len], buf[1..65]);
+
+                return pb_encoded_len;
+            }
+
+            fn serializePbHeader(out: []u8) void {
+                assert(out.len >= (pb_encoded_len - key_len));
+                out[0] = Key.pbFieldKey(1, 0);
+                out[1] = @enumToInt(KeyType.ECDSA);
+
+                out[2] = Key.pbFieldKey(2, 2);
+                out[3] = key_len;
+            }
+
+            fn serializePbFromRaw(public_key: [key_len]u8, out: []u8) usize {
+                assert(out.len >= pb_encoded_len);
+                serializePbHeader(out);
+                std.mem.copy(u8, out[4..], &public_key);
+                return pb_encoded_len;
+            }
+
+            fn deinit(self: @This()) void {
+                c.EVP_PKEY_free(self.key);
+            }
         };
+
+        pub const Signature = struct {
+            sig: [Len]u8,
+            actual_len: usize,
+
+            const Len = 72;
+
+            fn fromSlice(s: []const u8) !Signature {
+                if (s.len > Len) {
+                    return error.SignatureTooLong;
+                }
+
+                var self = Signature{ .sig = [_]u8{0} ** Len, .actual_len = s.len };
+                std.mem.copy(u8, self.sig[0..s.len], s);
+                return self;
+            }
+
+            fn verify(self: Signature, pub_key: ECDSAKeyPair.PublicKey, msg: []u8) !bool {
+                var md_ctx = c.EVP_MD_CTX_new();
+                defer c.EVP_MD_CTX_free(md_ctx);
+
+                // Initialize with SHA256 digest
+                if (c.EVP_DigestVerifyInit(md_ctx, null, c.EVP_sha256(), null, pub_key.key) == 0) {
+                    return error.DigestVerifyInitFailed;
+                }
+
+                const err = c.EVP_DigestVerify(md_ctx, self.sig[0..self.actual_len].ptr, self.actual_len, msg.ptr, msg.len);
+
+                switch (err) {
+                    1 => {
+                        return true;
+                    },
+                    0 => {
+                        return false;
+                    },
+                    else => {
+                        // For malformed signatures or other OpenSSL errors, treat as verification failure
+                        return false;
+                    },
+                }
+            }
+        };
+
+        pub fn new() !ECDSAKeyPair {
+            // 1) create the EC key
+            var ec_key = c.EC_KEY_new_by_curve_name(c.NID_X9_62_prime256v1);
+            if (ec_key == null) {
+                return error.ECKeyCreationFailed;
+            }
+
+            // Wrap error cleanup in a defer that checks whether we've already assigned:
+            var assigned = false;
+            defer if (!assigned) c.EC_KEY_free(ec_key);
+
+            // 2) generate the keypair
+            if (c.EC_KEY_generate_key(ec_key) != 1) {
+                return error.KeyGenerationFailed;
+            }
+
+            c.EC_KEY_set_asn1_flag(ec_key, c.OPENSSL_EC_NAMED_CURVE);
+
+            // 3) lift into EVP_PKEY
+            const maybePkey = c.EVP_PKEY_new();
+            if (maybePkey == null) {
+                return error.EVPKeyCreationFailed;
+            }
+            if (c.EVP_PKEY_assign_EC_KEY(maybePkey.?, ec_key) != 1) {
+                c.EVP_PKEY_free(maybePkey.?);
+                return error.EVPKeyAssignFailed;
+            }
+
+            // Now we've handed off ec_key → pkey, disable the cleanup
+            assigned = true;
+
+            return ECDSAKeyPair{ .key = maybePkey.? };
+        }
+
+        pub fn deinit(self: ECDSAKeyPair) void {
+            c.EVP_PKEY_free(self.key);
+        }
+
+        pub fn toPubKey(self: *ECDSAKeyPair) PublicKey {
+            return PublicKey{ .key = self.key };
+        }
+
+        fn sign(self: ECDSAKeyPair, msg: []const u8) !Signature {
+            var sig = Signature{ .sig = [_]u8{0} ** Signature.Len, .actual_len = 0 };
+            var sig_len: usize = Signature.Len;
+
+            var md_ctx = c.EVP_MD_CTX_new();
+            if (md_ctx == null) {
+                return error.MDContextCreationFailed;
+            }
+            defer c.EVP_MD_CTX_free(md_ctx);
+
+            // Initialize with SHA256 digest
+            if (c.EVP_DigestSignInit(md_ctx, null, c.EVP_sha256(), null, self.key) == 0) {
+                return error.DigestSignInitFailed;
+            }
+
+            var sig_slice: []u8 = sig.sig[0..];
+            if (c.EVP_DigestSign(md_ctx, sig_slice.ptr, &sig_len, msg.ptr, msg.len) == 0) {
+                return error.DigestSignFailed;
+            }
+
+            sig.actual_len = sig_len;
+            return sig;
+        }
+
+        fn signToDest(self: ECDSAKeyPair, msg: []u8, dest: []u8) !void {
+            assert(dest.len >= Signature.Len);
+
+            var sig_len: usize = Signature.Len;
+
+            var md_ctx = c.EVP_MD_CTX_new();
+            if (md_ctx == null) {
+                return error.MDContextCreationFailed;
+            }
+            defer c.EVP_MD_CTX_free(md_ctx);
+
+            // Initialize with SHA256 digest
+            if (c.EVP_DigestSignInit(md_ctx, null, c.EVP_sha256(), null, self.key) == 0) {
+                return error.DigestSignInitFailed;
+            }
+
+            if (c.EVP_DigestSign(md_ctx, dest.ptr, &sig_len, msg.ptr, msg.len) == 0) {
+                return error.DigestSignFailed;
+            }
+        }
+        /// Parse an EC private key from a DER‐encoded ECPrivateKey blob.
+        pub fn fromDerPrivateKey(der: []const u8) !ECDSAKeyPair {
+            var der_ptr: [*]const u8 = der.ptr;
+            const in_ptr = @ptrCast([*c][*c]const u8, &der_ptr);
+            var ec_key = c.d2i_ECPrivateKey(null, in_ptr, @intCast(c_long, der.len));
+            if (ec_key == null) {
+                return error.DerPrivKeyParseFailed;
+            }
+
+            // wrap into an EVP_PKEY so the rest of the API just works
+            var pkey = c.EVP_PKEY_new();
+            if (pkey == null) {
+                c.EC_KEY_free(ec_key);
+                return error.EVPKeyCreationFailed;
+            }
+            if (c.EVP_PKEY_assign_EC_KEY(pkey, ec_key) != 1) {
+                c.EVP_PKEY_free(pkey);
+                c.EC_KEY_free(ec_key);
+                return error.EVPKeyAssignFailed;
+            }
+
+            return ECDSAKeyPair{ .key = pkey.? };
+        }
     };
 
     pub const ED25519KeyPair = struct {
@@ -728,6 +1038,9 @@ pub const Key = union(KeyType) {
             .Ed25519 => {
                 return .{ .Ed25519 = .{ .pub_key_bytes = self.Ed25519.key_bytes } };
             },
+            .ECDSA => {
+                return .{ .ECDSA = .{ .pub_key_bytes = self.ECDSA.key_bytes } };
+            },
             else => {
                 @panic("other key types not implemented");
             },
@@ -742,6 +1055,11 @@ pub const Key = union(KeyType) {
 
                 const peer_id = try (try pub_key.toPeerID()).toString(allocator);
                 return peer_id;
+            },
+            .ECDSA => {
+                // Directly convert key bytes to PeerID and get string representation
+                const peer_id = PeerID{ .ECDSA = .{ .pub_key_bytes = self.ECDSA.key_bytes } };
+                return try peer_id.toString(allocator);
             },
             else => {
                 return error.UnsupportedKeyType;
@@ -790,6 +1108,10 @@ pub const Key = union(KeyType) {
             .Ed25519 => {
                 try protobuf.append_varint(out, self.Ed25519.key_bytes.len, .Simple);
                 try out.appendSlice(self.Ed25519.key_bytes[0..]);
+            },
+            .ECDSA => {
+                try protobuf.append_varint(out, self.ECDSA.key_bytes.len, .Simple);
+                try out.appendSlice(self.ECDSA.key_bytes[0..]);
             },
             else => {
                 return error.UnsupportedKeyType;
@@ -843,18 +1165,29 @@ pub const Key = union(KeyType) {
             return error.PBMissingFields;
         }
 
-        // const k = Key{ .key_type = key_type.?, .key_bytes = try allocator.alloc(u8, key_bytes.?.len) };
-        if (key_type != KeyType.Ed25519) {
-            return error.UnsupportedKeyType;
-        }
+        switch (key_type.?) {
+            KeyType.Ed25519 => {
+                if (key_bytes.?.len < OpenSSLKey.ED25519KeyPair.key_len) {
+                    return error.InvalidKeyLength;
+                }
 
-        var k: Key = Key{ .Ed25519 = .{ .key_bytes = [_]u8{0} ** OpenSSLKey.ED25519KeyPair.key_len } };
-        if (key_bytes.?.len < OpenSSLKey.ED25519KeyPair.key_len) {
-            return error.InvalidKeyLength;
-        }
+                var k: Key = Key{ .Ed25519 = .{ .key_bytes = [_]u8{0} ** OpenSSLKey.ED25519KeyPair.key_len } };
+                std.mem.copy(u8, k.Ed25519.key_bytes[0..], key_bytes.?[0..OpenSSLKey.ED25519KeyPair.key_len]);
+                return k;
+            },
+            KeyType.ECDSA => {
+                if (key_bytes.?.len < OpenSSLKey.ECDSAKeyPair.key_len) {
+                    return error.InvalidKeyLength;
+                }
 
-        std.mem.copy(u8, k.Ed25519.key_bytes[0..], key_bytes.?[0..OpenSSLKey.ED25519KeyPair.key_len]);
-        return k;
+                var k: Key = Key{ .ECDSA = .{ .key_bytes = [_]u8{0} ** OpenSSLKey.ECDSAKeyPair.key_len } };
+                std.mem.copy(u8, k.ECDSA.key_bytes[0..], key_bytes.?[0..OpenSSLKey.ECDSAKeyPair.key_len]);
+                return k;
+            },
+            else => {
+                return error.UnsupportedKeyType;
+            },
+        }
     }
 };
 
@@ -1109,6 +1442,92 @@ test "Round trip peer id" {
     try std.testing.expect(p.equal(p2));
 }
 
+test "ECDSA key generation" {
+    var kp = try OpenSSLKey.ECDSAKeyPair.new();
+    defer kp.deinit();
+
+    // Verify the key is valid
+    var ec_key = c.EVP_PKEY_get1_EC_KEY(kp.key);
+    try std.testing.expect(ec_key != null);
+    defer c.EC_KEY_free(ec_key);
+
+    var ec_point = c.EC_KEY_get0_public_key(ec_key);
+    try std.testing.expect(ec_point != null);
+
+    var ec_group = c.EC_KEY_get0_group(ec_key);
+    try std.testing.expect(ec_group != null);
+}
+
+test "ECDSA Sign and Verify" {
+    var msg = "hello world".*;
+
+    var kp = try OpenSSLKey.ECDSAKeyPair.new();
+    defer kp.deinit();
+
+    var sig = try kp.sign(msg[0..]);
+    std.log.debug("\n ECDSA Sig is {s}\n", .{std.fmt.fmtSliceHexLower(sig.sig[0..])});
+
+    // Verify using the same key's public part
+    try std.testing.expect(try sig.verify(OpenSSLKey.ECDSAKeyPair.PublicKey{ .key = kp.key }, msg[0..]));
+
+    // Modify the signature, verification should fail
+    sig.sig[0] ^= 0xff;
+    try std.testing.expect(!(try sig.verify(OpenSSLKey.ECDSAKeyPair.PublicKey{ .key = kp.key }, msg[0..])));
+}
+
+test "ECDSA PeerID generation" {
+    var kp = try OpenSSLKey.ECDSAKeyPair.new();
+    defer kp.deinit();
+
+    // Get PeerID from public key
+    const pub_key = OpenSSLKey.ECDSAKeyPair.PublicKey{ .key = kp.key };
+    const peer_id = try pub_key.toPeerID();
+
+    // Convert to string
+    const allocator = std.testing.allocator;
+    const peer_id_str = try peer_id.toString(allocator);
+    defer allocator.free(peer_id_str);
+
+    std.log.debug("ECDSA Peer id {s}\n", .{peer_id_str});
+
+    // Verify the peer ID starts with the expected multibase prefix
+    try std.testing.expectEqual(@as(u8, 'b'), peer_id_str[0]);
+}
+
+test "ECDSA protobuf serialization" {
+    const allocator = std.testing.allocator;
+
+    // Create a new ECDSA key
+    var kp = try OpenSSLKey.ECDSAKeyPair.new();
+    defer kp.deinit();
+
+    // Get peer ID
+    const pub_key = OpenSSLKey.ECDSAKeyPair.PublicKey{ .key = kp.key };
+    const peer_id = try pub_key.toPeerID();
+
+    // Create a Key from the peer_id
+    var key = Key{ .ECDSA = .{ .key_bytes = peer_id.ECDSA.pub_key_bytes } };
+
+    // Serialize to protobuf
+    var buf = std.ArrayList(u8).init(allocator);
+    defer buf.deinit();
+
+    try key.serializePb(&buf);
+
+    // Deserialize from protobuf
+    var deserialized_key = try Key.deserializePb(buf.items);
+
+    // Compare original and deserialized keys
+    switch (deserialized_key) {
+        .ECDSA => {
+            try std.testing.expectEqualSlices(u8, key.ECDSA.key_bytes[0..], deserialized_key.ECDSA.key_bytes[0..]);
+        },
+        else => {
+            try std.testing.expect(false); // Should be ECDSA
+        },
+    }
+}
+
 test "base32 encoding" {
     std.testing.log_level = .debug;
     const s = "080112208a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f01";
@@ -1124,4 +1543,47 @@ test "base32 encoding" {
     _ = try encoding.decode(roundtrip_buf[0..], buf_encoded[0..]);
 
     try std.testing.expectEqualSlices(u8, buf[0..], roundtrip_buf[0..buf.len]);
+}
+test "ECDSA private key produces expected public key" {
+    const private_key_proto_hex: *const [250:0]u8 = "08031279307702010104203E5B1FE9712E6C314942A750BD67485DE3C1EFE85B1BFB520AE8F9AE3DFA4A4CA00A06082A8648CE3D030107A14403420004DE3D300FA36AE0E8F5D530899D83ABAB44ABF3161F162A4BC901D8E6ECDA020E8B6D5F8DA30525E71D6851510C098E5C47C646A597FB4DCEC034E9F77C409E62";
+
+    const proto_len = private_key_proto_hex.len / 2;
+    var proto_buf = try std.testing.allocator.alloc(u8, proto_len);
+    defer std.testing.allocator.free(proto_buf);
+    _ = try std.fmt.hexToBytes(proto_buf, private_key_proto_hex);
+
+    const der_priv = proto_buf[4..];
+
+    var kp = try OpenSSLKey.ECDSAKeyPair.fromDerPrivateKey(der_priv);
+    defer kp.deinit();
+    const pub_key = kp.toPubKey();
+    const peer_id = try pub_key.toPeerID();
+
+    const expected_full_hex: *const [190:0]u8 = "0803125b3059301306072a8648ce3d020106082a8648ce3d03010703420004de3d300fa36ae0e8f5d530899d83abab44abf3161f162a4bc901d8e6ecda020e8b6d5f8da30525e71d6851510c098e5c47c646a597fb4dcec034e9f77c409e62";
+
+    const expected_full_len = expected_full_hex.len / 2;
+    var expected_full_buf = try std.testing.allocator.alloc(u8, expected_full_len);
+    defer std.testing.allocator.free(expected_full_buf);
+    _ = try std.fmt.hexToBytes(expected_full_buf, expected_full_hex);
+
+    var key_start_idx: usize = 0;
+    var i: usize = 0;
+    while (i < expected_full_buf.len - 2) : (i += 1) {
+        if (i > 0 and expected_full_buf[i - 1] == 0x42 and expected_full_buf[i] == 0x00 and expected_full_buf[i + 1] == 0x04) {
+            key_start_idx = i + 2;
+            break;
+        }
+    }
+
+    if (key_start_idx == 0 or key_start_idx + 64 > expected_full_buf.len) {
+        return error.InvalidExpectedKey;
+    }
+
+    const expected_raw_key = expected_full_buf[key_start_idx .. key_start_idx + 64];
+
+    try std.testing.expectEqualSlices(
+        u8,
+        expected_raw_key,
+        peer_id.ECDSA.pub_key_bytes[0..64],
+    );
 }
