@@ -378,7 +378,7 @@ pub const OpenSSLKey = union(KeyType) {
     pub const ECDSAKeyPair = struct {
         key: *c.EVP_PKEY,
         const key_len = 64;
-        const curve_name = "secp256k1";
+        const curve_name = "p256";
 
         pub const PublicKey = struct {
             key: *c.EVP_PKEY,
@@ -632,6 +632,29 @@ pub const OpenSSLKey = union(KeyType) {
             if (c.EVP_DigestSign(md_ctx, dest.ptr, &sig_len, msg.ptr, msg.len) == 0) {
                 return error.DigestSignFailed;
             }
+        }
+        /// Parse an EC private key from a DER‐encoded ECPrivateKey blob.
+        pub fn fromDerPrivateKey(der: []const u8) !ECDSAKeyPair {
+            var der_ptr: [*]const u8 = der.ptr;
+            const in_ptr = @ptrCast([*c][*c]const u8, &der_ptr);
+            var ec_key = c.d2i_ECPrivateKey(null, in_ptr, @intCast(c_long, der.len));
+            if (ec_key == null) {
+                return error.DerPrivKeyParseFailed;
+            }
+
+            // wrap into an EVP_PKEY so the rest of the API just works
+            var pkey = c.EVP_PKEY_new();
+            if (pkey == null) {
+                c.EC_KEY_free(ec_key);
+                return error.EVPKeyCreationFailed;
+            }
+            if (c.EVP_PKEY_assign_EC_KEY(pkey, ec_key) != 1) {
+                c.EVP_PKEY_free(pkey);
+                c.EC_KEY_free(ec_key);
+                return error.EVPKeyAssignFailed;
+            }
+
+            return ECDSAKeyPair{ .key = pkey.? };
         }
     };
 
@@ -1520,4 +1543,47 @@ test "base32 encoding" {
     _ = try encoding.decode(roundtrip_buf[0..], buf_encoded[0..]);
 
     try std.testing.expectEqualSlices(u8, buf[0..], roundtrip_buf[0..buf.len]);
+}
+test "ECDSA private key produces expected public key" {
+    const private_key_proto_hex: *const [250:0]u8 = "08031279307702010104203E5B1FE9712E6C314942A750BD67485DE3C1EFE85B1BFB520AE8F9AE3DFA4A4CA00A06082A8648CE3D030107A14403420004DE3D300FA36AE0E8F5D530899D83ABAB44ABF3161F162A4BC901D8E6ECDA020E8B6D5F8DA30525E71D6851510C098E5C47C646A597FB4DCEC034E9F77C409E62";
+
+    const proto_len = private_key_proto_hex.len / 2;
+    var proto_buf = try std.testing.allocator.alloc(u8, proto_len);
+    defer std.testing.allocator.free(proto_buf);
+    _ = try std.fmt.hexToBytes(proto_buf, private_key_proto_hex);
+
+    const der_priv = proto_buf[4..];
+
+    var kp = try OpenSSLKey.ECDSAKeyPair.fromDerPrivateKey(der_priv);
+    defer kp.deinit();
+    const pub_key = kp.toPubKey();
+    const peer_id = try pub_key.toPeerID();
+
+    const expected_full_hex: *const [190:0]u8 = "0803125b3059301306072a8648ce3d020106082a8648ce3d03010703420004de3d300fa36ae0e8f5d530899d83abab44abf3161f162a4bc901d8e6ecda020e8b6d5f8da30525e71d6851510c098e5c47c646a597fb4dcec034e9f77c409e62";
+
+    const expected_full_len = expected_full_hex.len / 2;
+    var expected_full_buf = try std.testing.allocator.alloc(u8, expected_full_len);
+    defer std.testing.allocator.free(expected_full_buf);
+    _ = try std.fmt.hexToBytes(expected_full_buf, expected_full_hex);
+
+    var key_start_idx: usize = 0;
+    var i: usize = 0;
+    while (i < expected_full_buf.len - 2) : (i += 1) {
+        if (i > 0 and expected_full_buf[i - 1] == 0x42 and expected_full_buf[i] == 0x00 and expected_full_buf[i + 1] == 0x04) {
+            key_start_idx = i + 2;
+            break;
+        }
+    }
+
+    if (key_start_idx == 0 or key_start_idx + 64 > expected_full_buf.len) {
+        return error.InvalidExpectedKey;
+    }
+
+    const expected_raw_key = expected_full_buf[key_start_idx .. key_start_idx + 64];
+
+    try std.testing.expectEqualSlices(
+        u8,
+        expected_raw_key,
+        peer_id.ECDSA.pub_key_bytes[0..64],
+    );
 }
