@@ -368,6 +368,7 @@ pub fn TestNode(
                     var res: [*c]ifaddrs.struct_ifaddrs = undefined;
                     if (ifaddrs.getifaddrs(&res) != 0) {
                         std.log.info("Failed to get ifaddrs", .{});
+                        return error.GetInterfaceAddrFailed;
                     }
                     defer ifaddrs.freeifaddrs(res);
 
