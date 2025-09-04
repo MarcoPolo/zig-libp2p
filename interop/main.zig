@@ -126,7 +126,7 @@ pub fn main() anyerror!void {
         var shutdown_listener_sem: Semaphore = .{};
         var listener_multiaddr_semaphore: Semaphore = .{};
         var listener_multiaddr: []const u8 = undefined;
-        var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, "0.0.0.0", &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
+        var listener_thread = try std.Thread.spawn(.{}, test_util.runListener, .{ allocator, Node, ip, &listener_multiaddr, &listener_multiaddr_semaphore, &shutdown_listener_sem });
         listener_multiaddr_semaphore.wait();
         try redis_client.send(void, .{ "RPUSH", "listenerAddr", listener_multiaddr });
         log.info("Sent listener multiaddr to redis", .{});
